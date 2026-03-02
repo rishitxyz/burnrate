@@ -1,16 +1,6 @@
 export type Bank = 'hdfc' | 'icici' | 'axis' | 'sbi' | 'amex' | 'idfc_first' | 'indusind' | 'kotak' | 'sc' | 'yes' | 'au' | 'rbl';
 
-export type Category =
-  | 'food'
-  | 'shopping'
-  | 'travel'
-  | 'bills'
-  | 'entertainment'
-  | 'fuel'
-  | 'health'
-  | 'groceries'
-  | 'cc_payment'
-  | 'other';
+export type Category = string;
 
 export interface Card {
   id: string;
@@ -29,6 +19,7 @@ export interface Transaction {
   cardId: string;
   bank: Bank;
   cardLast4: string;
+  tags?: string[];
 }
 
 export interface Statement {
@@ -43,7 +34,7 @@ export interface Statement {
 }
 
 export interface CategoryBreakdown {
-  category: Category;
+  category: string;
   amount: number;
   percentage: number;
   count: number;
@@ -97,6 +88,6 @@ export const CATEGORY_CONFIG: Record<Category, { label: string; icon: string; co
   fuel: { label: 'Fuel', icon: 'Fuel', color: CATEGORY_COLORS.fuel },
   health: { label: 'Health', icon: 'Heart', color: CATEGORY_COLORS.health },
   groceries: { label: 'Groceries', icon: 'ShoppingCart', color: CATEGORY_COLORS.groceries },
-  cc_payment: { label: 'CC Payment', icon: 'CreditCard', color: CATEGORY_COLORS.cc_payment },
+  cc_payment: { label: 'CC Bill Payment', icon: 'CreditCard', color: CATEGORY_COLORS.cc_payment },
   other: { label: 'Other', icon: 'MoreHorizontal', color: CATEGORY_COLORS.other },
 };

@@ -3,6 +3,7 @@
 import hashlib
 import logging
 import os
+from decimal import Decimal, ROUND_HALF_UP
 from pathlib import Path
 from typing import Callable, Dict, Optional, Type
 
@@ -209,7 +210,11 @@ def process_statement(
                 card_id = cards[0].id
 
         # Create Statement record
-        total_spend = sum(t.amount for t in parsed.transactions if t.type == "debit")
+        total_decimal = sum(
+            (Decimal(str(t.amount)) for t in parsed.transactions if t.type == "debit"),
+            Decimal(0),
+        )
+        total_spend = float(total_decimal.quantize(Decimal("0.01"), rounding=ROUND_HALF_UP))
         statement = Statement(
             bank=bank,
             card_last4=card_last4,
@@ -227,7 +232,7 @@ def process_statement(
 
         # Insert transactions
         for pt in parsed.transactions:
-            category = categorize(pt.merchant)
+            category = categorize(pt.merchant, db_session=db_session)
             tx = Transaction(
                 statement_id=statement.id,
                 date=pt.date,

@@ -11,6 +11,17 @@ declare module '@cred/neopop-web/lib/components' {
   export const Column: ComponentType<any>;
   export const HorizontalSpacer: ComponentType<any>;
   export const VerticalSpacer: ComponentType<any>;
+  export const showToast: (content: string, options?: {
+    content?: string;
+    description?: string;
+    type?: 'success' | 'error' | 'warning';
+    fullWidth?: boolean;
+    dismissOnClick?: boolean;
+    autoCloseTime?: number;
+    icon?: string;
+    colorConfig?: { background: string; color: string };
+  }) => void;
+  export const ToastContainer: ComponentType<any>;
 }
 
 declare module '@cred/neopop-web/lib/components/Typography/types' {

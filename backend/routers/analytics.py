@@ -1,10 +1,10 @@
 """Analytics API endpoints."""
 
-from datetime import date, timedelta
+from datetime import date, datetime, timedelta
+from decimal import Decimal, ROUND_HALF_UP
 from typing import Any, Dict, List, Optional
 
 from fastapi import APIRouter, Depends, Query
-from sqlalchemy import func
 from sqlalchemy.orm import Session
 
 from backend.models.database import get_db
@@ -30,14 +30,47 @@ def _months_in_range(from_date: Optional[date], to_date: Optional[date]) -> int:
     )
 
 
+def _parse_filter_params(
+    cards: Optional[str] = None,
+    categories: Optional[str] = None,
+    direction: Optional[str] = None,
+    amount_min: Optional[float] = None,
+    amount_max: Optional[float] = None,
+    tags: Optional[str] = None,
+):
+    card_ids = [c.strip() for c in cards.split(",") if c.strip()] if cards else None
+    category_list = [c.strip() for c in categories.split(",") if c.strip()] if categories else None
+    tag_list = [t.strip() for t in tags.split(",") if t.strip()] if tags else None
+    return card_ids, category_list, direction, amount_min, amount_max, tag_list
+
+
 @router.get("/summary")
 def analytics_summary(
     db: Session = Depends(get_db),
     from_date: Optional[date] = Query(None, alias="from"),
     to_date: Optional[date] = Query(None, alias="to"),
+    cards: Optional[str] = Query(None, description="Comma-separated card UUIDs"),
+    categories: Optional[str] = Query(None, description="Comma-separated category slugs"),
+    direction: Optional[str] = Query(None, description="incoming or outgoing"),
+    amount_min: Optional[float] = Query(None),
+    amount_max: Optional[float] = Query(None),
+    tags: Optional[str] = Query(None, description="Comma-separated tag names"),
 ) -> Dict[str, Any]:
     """Total spend, delta %, sparkline data, avg monthly spend."""
-    summary = get_summary(db, from_date=from_date, to_date=to_date)
+    card_ids, category_list, direction, amount_min, amount_max, tag_list = _parse_filter_params(
+        cards, categories, direction, amount_min, amount_max, tags
+    )
+    summary = get_summary(
+        db,
+        from_date=from_date,
+        to_date=to_date,
+        card_ids=card_ids,
+        categories=category_list,
+        direction=direction,
+        amount_min=amount_min,
+        amount_max=amount_max,
+        tags=tag_list,
+    )
     total_spend = summary["total_spend"]
 
     # Compute delta % relative to filter range.
@@ -53,15 +86,35 @@ def analytics_summary(
         this_month_start = today.replace(day=1)
         last_month_end = this_month_start - timedelta(days=1)
         last_month_start = last_month_end.replace(day=1)
-        current_spend = compute_net_spend(db, this_month_start, today)
+        current_spend = compute_net_spend(
+            db,
+            this_month_start,
+            today,
+            card_ids=card_ids,
+            categories=category_list,
+            direction=direction,
+            amount_min=amount_min,
+            amount_max=amount_max,
+            tags=tag_list,
+        )
         prev_start = last_month_start
         prev_end = last_month_end
         period_label = "vs last month"
 
-    prev_spend = compute_net_spend(db, prev_start, prev_end)
+    prev_spend = compute_net_spend(
+        db,
+        prev_start,
+        prev_end,
+        card_ids=card_ids,
+        categories=category_list,
+        direction=direction,
+        amount_min=amount_min,
+        amount_max=amount_max,
+        tags=tag_list,
+    )
 
     delta = (
-        round(((current_spend - prev_spend) / prev_spend) * 100)
+        int((Decimal(str(current_spend)) - Decimal(str(prev_spend))) / Decimal(str(prev_spend)) * 100)
         if prev_spend > 0
         else 0
     )
@@ -69,10 +122,25 @@ def analytics_summary(
     trends = get_monthly_trends(db, months=6)
     sparkline = [{"value": t["spend"]} for t in trends]
 
-    credit_limit = db.query(func.max(Statement.credit_limit)).scalar() or 0
+    statements = (
+        db.query(Statement.bank, Statement.card_last4, Statement.credit_limit, Statement.period_end, Statement.imported_at)
+        .filter(Statement.credit_limit.isnot(None))
+        .all()
+    )
+    by_card: Dict[tuple, tuple] = {}
+    for bank, card_last4, credit_limit_val, period_end, imported_at in statements:
+        key = (bank or "", card_last4 or "")
+        recency = (period_end or date.min, imported_at or datetime.min)
+        if key not in by_card or recency > (by_card[key][0] or date.min, by_card[key][1] or datetime.min):
+            by_card[key] = (period_end or date.min, imported_at or datetime.min, credit_limit_val or 0)
+    credit_limit = float(
+        sum((Decimal(str(v[2])) for v in by_card.values()), Decimal(0)).quantize(
+            Decimal("0.01"), rounding=ROUND_HALF_UP
+        )
+    )
 
     months = _months_in_range(from_date, to_date)
-    avg_monthly_spend = round(total_spend / months, 2) if months else 0
+    avg_monthly_spend = float((Decimal(str(total_spend)) / Decimal(months)).quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)) if months else 0
 
     return {
         "totalSpend": total_spend,
@@ -95,9 +163,28 @@ def analytics_categories(
     db: Session = Depends(get_db),
     from_date: Optional[date] = Query(None, alias="from"),
     to_date: Optional[date] = Query(None, alias="to"),
+    cards: Optional[str] = Query(None, description="Comma-separated card UUIDs"),
+    categories: Optional[str] = Query(None, description="Comma-separated category slugs"),
+    direction: Optional[str] = Query(None, description="incoming or outgoing"),
+    amount_min: Optional[float] = Query(None),
+    amount_max: Optional[float] = Query(None),
+    tags: Optional[str] = Query(None, description="Comma-separated tag names"),
 ) -> Dict[str, Any]:
     """Category breakdown."""
-    result = get_category_breakdown(db, from_date=from_date, to_date=to_date)
+    card_ids, category_list, direction, amount_min, amount_max, tag_list = _parse_filter_params(
+        cards, categories, direction, amount_min, amount_max, tags
+    )
+    result = get_category_breakdown(
+        db,
+        from_date=from_date,
+        to_date=to_date,
+        card_ids=card_ids,
+        categories=category_list,
+        direction=direction,
+        amount_min=amount_min,
+        amount_max=amount_max,
+        tags=tag_list,
+    )
     return {
         "breakdown": [
             {
@@ -128,10 +215,30 @@ def analytics_merchants(
     db: Session = Depends(get_db),
     from_date: Optional[date] = Query(None, alias="from"),
     to_date: Optional[date] = Query(None, alias="to"),
+    cards: Optional[str] = Query(None, description="Comma-separated card UUIDs"),
+    categories: Optional[str] = Query(None, description="Comma-separated category slugs"),
+    direction: Optional[str] = Query(None, description="incoming or outgoing"),
+    amount_min: Optional[float] = Query(None),
+    amount_max: Optional[float] = Query(None),
+    tags: Optional[str] = Query(None, description="Comma-separated tag names"),
     limit: int = Query(10, ge=1, le=50),
 ) -> Dict[str, Any]:
     """Top merchants by spend."""
-    data = get_top_merchants(db, from_date=from_date, to_date=to_date, limit=limit)
+    card_ids, category_list, direction, amount_min, amount_max, tag_list = _parse_filter_params(
+        cards, categories, direction, amount_min, amount_max, tags
+    )
+    data = get_top_merchants(
+        db,
+        from_date=from_date,
+        to_date=to_date,
+        card_ids=card_ids,
+        categories=category_list,
+        direction=direction,
+        amount_min=amount_min,
+        amount_max=amount_max,
+        tags=tag_list,
+        limit=limit,
+    )
     return {
         "merchants": [
             {"merchant": m["merchant"], "amount": m["spend"], "count": m["count"]}

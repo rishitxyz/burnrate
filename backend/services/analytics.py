@@ -7,12 +7,13 @@ CC payment transactions are excluded entirely; legitimate refunds/reversals
 """
 
 from datetime import date, timedelta
+from decimal import Decimal, ROUND_HALF_UP
 from typing import Any, Dict, List, Optional
 
-from sqlalchemy import case, func
+from sqlalchemy import case, func, select
 from sqlalchemy.orm import Session
 
-from backend.models.models import Transaction
+from backend.models.models import Transaction, TransactionTag
 
 
 def _date_filter(q, from_date: Optional[date], to_date: Optional[date]):
@@ -23,12 +24,46 @@ def _date_filter(q, from_date: Optional[date], to_date: Optional[date]):
     return q
 
 
+def _apply_filters(
+    q,
+    card_ids: Optional[List[str]] = None,
+    categories: Optional[List[str]] = None,
+    direction: Optional[str] = None,
+    amount_min: Optional[float] = None,
+    amount_max: Optional[float] = None,
+    tags: Optional[List[str]] = None,
+):
+    """Apply common filters to a transaction query."""
+    if card_ids:
+        q = q.filter(Transaction.card_id.in_(card_ids))
+    if categories:
+        q = q.filter(Transaction.category.in_(categories))
+    if direction == "incoming":
+        q = q.filter(Transaction.type == "credit")
+    elif direction == "outgoing":
+        q = q.filter(Transaction.type == "debit")
+    if amount_min is not None:
+        q = q.filter(Transaction.amount >= amount_min)
+    if amount_max is not None:
+        q = q.filter(Transaction.amount <= amount_max)
+    if tags:
+        tag_subq = select(TransactionTag.transaction_id).where(TransactionTag.tag.in_(tags)).distinct()
+        q = q.filter(Transaction.id.in_(tag_subq))
+    return q
+
+
 def compute_net_spend(
     db: Session,
     from_date: Optional[date] = None,
     to_date: Optional[date] = None,
     bank: Optional[str] = None,
     card_last4: Optional[str] = None,
+    card_ids: Optional[List[str]] = None,
+    categories: Optional[List[str]] = None,
+    direction: Optional[str] = None,
+    amount_min: Optional[float] = None,
+    amount_max: Optional[float] = None,
+    tags: Optional[List[str]] = None,
 ) -> float:
     """Single source of truth for net spend calculation."""
     q = (
@@ -47,16 +82,35 @@ def compute_net_spend(
         q = q.filter(Transaction.bank == bank)
     if card_last4:
         q = q.filter(Transaction.card_last4 == card_last4)
-    return round(q.scalar() or 0.0, 2)
+    q = _apply_filters(q, card_ids, categories, direction, amount_min, amount_max, tags)
+    raw = q.scalar() or 0.0
+    d = Decimal(str(raw)).quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
+    return float(d)
 
 
 def get_summary(
     db: Session,
     from_date: Optional[date] = None,
     to_date: Optional[date] = None,
+    card_ids: Optional[List[str]] = None,
+    categories: Optional[List[str]] = None,
+    direction: Optional[str] = None,
+    amount_min: Optional[float] = None,
+    amount_max: Optional[float] = None,
+    tags: Optional[List[str]] = None,
 ) -> Dict[str, Any]:
     """Total spend and card-wise breakdown."""
-    total = compute_net_spend(db, from_date, to_date)
+    total = compute_net_spend(
+        db,
+        from_date=from_date,
+        to_date=to_date,
+        card_ids=card_ids,
+        categories=categories,
+        direction=direction,
+        amount_min=amount_min,
+        amount_max=amount_max,
+        tags=tags,
+    )
 
     # Per-card net spend: debits − credits (excluding cc_payment)
     card_q = (
@@ -74,6 +128,7 @@ def get_summary(
         .filter(Transaction.category != "cc_payment")
     )
     card_q = _date_filter(card_q, from_date, to_date)
+    card_q = _apply_filters(card_q, card_ids, categories, direction, amount_min, amount_max, tags)
     card_rows = card_q.group_by(Transaction.bank, Transaction.card_last4).all()
 
     return {
@@ -82,7 +137,7 @@ def get_summary(
             {
                 "bank": r.bank,
                 "card_last4": r.card_last4,
-                "spend": round(r.net_spend or 0, 2),
+                "spend": float(Decimal(str(r.net_spend or 0)).quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)),
                 "count": r.count,
             }
             for r in card_rows
@@ -94,6 +149,12 @@ def get_category_breakdown(
     db: Session,
     from_date: Optional[date] = None,
     to_date: Optional[date] = None,
+    card_ids: Optional[List[str]] = None,
+    categories: Optional[List[str]] = None,
+    direction: Optional[str] = None,
+    amount_min: Optional[float] = None,
+    amount_max: Optional[float] = None,
+    tags: Optional[List[str]] = None,
 ) -> Dict[str, Any]:
     """Category amounts and percentages."""
     q = (
@@ -102,26 +163,28 @@ def get_category_breakdown(
             func.sum(Transaction.amount).label("amount"),
             func.count(Transaction.id).label("count"),
         )
-        .filter(Transaction.type == "debit")
         .filter(Transaction.category != "cc_payment")
     )
-    if from_date:
-        q = q.filter(Transaction.date >= from_date)
-    if to_date:
-        q = q.filter(Transaction.date <= to_date)
+    if direction == "incoming":
+        q = q.filter(Transaction.type == "credit")
+    else:
+        q = q.filter(Transaction.type == "debit")
+    q = _date_filter(q, from_date, to_date)
+    q = _apply_filters(q, card_ids, categories, direction, amount_min, amount_max, tags)
     rows = q.group_by(Transaction.category).all()
 
-    total = sum(r.amount or 0 for r in rows)
+    total_decimal = sum(Decimal(str(r.amount or 0)) for r in rows)
+    total_float = float(total_decimal.quantize(Decimal("0.01"), rounding=ROUND_HALF_UP))
     categories = [
         {
             "category": r.category,
-            "amount": round(r.amount or 0, 2),
-            "percentage": round((r.amount or 0) / total * 100, 1) if total else 0,
+            "amount": float(Decimal(str(r.amount or 0)).quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)),
+            "percentage": float((Decimal(str(r.amount or 0)) / total_decimal * 100).quantize(Decimal("0.1"), rounding=ROUND_HALF_UP)) if total_decimal else 0,
             "count": r.count,
         }
         for r in rows
     ]
-    return {"total": round(total, 2), "categories": categories}
+    return {"total": total_float, "categories": categories}
 
 
 def get_monthly_trends(db: Session, months: int = 12) -> List[Dict[str, Any]]:
@@ -148,7 +211,7 @@ def get_monthly_trends(db: Session, months: int = 12) -> List[Dict[str, Any]]:
     )
 
     return [
-        {"month": r.month, "spend": round(r.spend or 0, 2)}
+        {"month": r.month, "spend": float(Decimal(str(r.spend or 0)).quantize(Decimal("0.01"), rounding=ROUND_HALF_UP))}
         for r in rows
     ]
 
@@ -157,6 +220,12 @@ def get_top_merchants(
     db: Session,
     from_date: Optional[date] = None,
     to_date: Optional[date] = None,
+    card_ids: Optional[List[str]] = None,
+    categories: Optional[List[str]] = None,
+    direction: Optional[str] = None,
+    amount_min: Optional[float] = None,
+    amount_max: Optional[float] = None,
+    tags: Optional[List[str]] = None,
     limit: int = 10,
 ) -> List[Dict[str, Any]]:
     """Top merchants by spend."""
@@ -166,13 +235,14 @@ def get_top_merchants(
             func.sum(Transaction.amount).label("spend"),
             func.count(Transaction.id).label("count"),
         )
-        .filter(Transaction.type == "debit")
         .filter(Transaction.category != "cc_payment")
     )
-    if from_date:
-        q = q.filter(Transaction.date >= from_date)
-    if to_date:
-        q = q.filter(Transaction.date <= to_date)
+    if direction == "incoming":
+        q = q.filter(Transaction.type == "credit")
+    else:
+        q = q.filter(Transaction.type == "debit")
+    q = _date_filter(q, from_date, to_date)
+    q = _apply_filters(q, card_ids, categories, direction, amount_min, amount_max, tags)
     rows = (
         q.group_by(Transaction.merchant)
         .order_by(func.sum(Transaction.amount).desc())
@@ -181,6 +251,6 @@ def get_top_merchants(
     )
 
     return [
-        {"merchant": r.merchant, "spend": round(r.spend or 0, 2), "count": r.count}
+        {"merchant": r.merchant, "spend": float(Decimal(str(r.spend or 0)).quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)), "count": r.count}
         for r in rows
     ]

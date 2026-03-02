@@ -4,8 +4,7 @@ import { toast } from '@/components/Toast';
 import { SetupForm, type SetupFormInitialData } from '@/components/SetupForm';
 import { submitSetup, useSettings } from '@/hooks/useApi';
 import { updateSettings } from '@/lib/api';
-import { Button } from '@cred/neopop-web/lib/components';
-import { X } from 'lucide-react';
+import { CloseButton } from '@/components/CloseButton';
 import styled from 'styled-components';
 
 const PageWrapper = styled.div`
@@ -91,16 +90,7 @@ export function SetupWizard() {
     <PageWrapper>
       {isUpdate && (
         <div style={{ position: 'absolute', top: 20, right: 24, zIndex: 10 }}>
-          <Button
-            variant="primary"
-            kind="elevated"
-            size="small"
-            colorMode="dark"
-            onClick={handleClose}
-          >
-            <X size={16} style={{ marginRight: 4 }} />
-            Close
-          </Button>
+          <CloseButton onClick={handleClose} variant="modal" />
         </div>
       )}
       <div style={{ opacity: submitting ? 0.7 : 1, pointerEvents: submitting ? 'none' : 'auto' }}>

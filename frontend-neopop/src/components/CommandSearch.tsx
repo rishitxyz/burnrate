@@ -3,7 +3,8 @@ import { ElevatedCard } from '@cred/neopop-web/lib/components';
 import { Typography } from '@cred/neopop-web/lib/components';
 import { FontType, FontWeights } from '@cred/neopop-web/lib/components/Typography/types';
 import { Button } from '@cred/neopop-web/lib/components';
-import { Search, X } from 'lucide-react';
+import { Search } from 'lucide-react';
+import { CloseButton } from '@/components/CloseButton';
 import { CATEGORY_CONFIG, type Category } from '@/lib/types';
 
 interface CommandSearchProps {
@@ -106,16 +107,7 @@ export function CommandSearch({ open, onClose, onSearch, className }: CommandSea
               color: '#ffffff',
             }}
           />
-          <Button
-            variant="primary"
-            kind="elevated"
-            size="small"
-            colorMode="dark"
-            onClick={onClose}
-            style={{ background: 'none', border: 'none', color: 'rgba(255,255,255,0.5)', padding: 4 }}
-          >
-            <X size={16} />
-          </Button>
+          <CloseButton onClick={onClose} variant="transparent" />
         </div>
 
         <div style={{ padding: 16 }}>

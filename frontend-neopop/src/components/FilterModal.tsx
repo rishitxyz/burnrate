@@ -3,30 +3,45 @@ import { ElevatedCard } from '@cred/neopop-web/lib/components';
 import { Typography } from '@cred/neopop-web/lib/components';
 import { FontType, FontWeights } from '@cred/neopop-web/lib/components/Typography/types';
 import { Button } from '@cred/neopop-web/lib/components';
-import { X } from 'lucide-react';
+import { CloseButton } from '@/components/CloseButton';
 import { useFilters, type Direction } from '@/contexts/FilterContext';
 import { useCards } from '@/hooks/useApi';
-import { CATEGORY_CONFIG } from '@/lib/types';
-import type { Category } from '@/lib/types';
 
 interface FilterModalProps {
   open: boolean;
   onClose: () => void;
 }
 
-const CATEGORIES = Object.keys(CATEGORY_CONFIG) as Category[];
-
 export function FilterModal({ open, onClose }: FilterModalProps) {
   const { filters, setFilters, clearFilters } = useFilters();
   const { cards } = useCards();
 
+  const [allCategories, setAllCategories] = useState<{ slug: string; name: string; color: string }[]>([]);
+  const [availableTags, setAvailableTags] = useState<{ id: string; name: string }[]>([]);
   const [localCards, setLocalCards] = useState<string[]>([]);
-  const [localCategories, setLocalCategories] = useState<Category[]>([]);
+  const [localCategories, setLocalCategories] = useState<string[]>([]);
+  const [localTags, setLocalTags] = useState<string[]>([]);
   const [localDirection, setLocalDirection] = useState<Direction>('all');
   const [localFrom, setLocalFrom] = useState('');
   const [localTo, setLocalTo] = useState('');
   const [localMin, setLocalMin] = useState('');
   const [localMax, setLocalMax] = useState('');
+
+  useEffect(() => {
+    fetch('http://localhost:8000/api/categories/all')
+      .then((r) => r.json())
+      .then((data: any[]) =>
+        setAllCategories(data.map((c) => ({ slug: c.slug, name: c.name, color: c.color })))
+      )
+      .catch(() => {});
+  }, []);
+
+  useEffect(() => {
+    fetch('http://localhost:8000/api/tags')
+      .then((r) => r.json())
+      .then((data: any[]) => setAvailableTags(data))
+      .catch(() => {});
+  }, []);
 
   const safeCards = Array.isArray(cards) ? cards : [];
 
@@ -34,6 +49,7 @@ export function FilterModal({ open, onClose }: FilterModalProps) {
     if (open) {
       setLocalCards(filters.selectedCards);
       setLocalCategories(filters.selectedCategories);
+      setLocalTags(filters.selectedTags ?? []);
       setLocalDirection(filters.direction);
       setLocalFrom(filters.dateRange.from ?? '');
       setLocalTo(filters.dateRange.to ?? '');
@@ -56,9 +72,15 @@ export function FilterModal({ open, onClose }: FilterModalProps) {
     );
   };
 
-  const toggleCategory = (cat: Category) => {
+  const toggleCategory = (cat: string) => {
     setLocalCategories((prev) =>
       prev.includes(cat) ? prev.filter((c) => c !== cat) : [...prev, cat]
+    );
+  };
+
+  const toggleTag = (tagName: string) => {
+    setLocalTags((prev) =>
+      prev.includes(tagName) ? prev.filter((t) => t !== tagName) : [...prev, tagName]
     );
   };
 
@@ -66,6 +88,7 @@ export function FilterModal({ open, onClose }: FilterModalProps) {
     setFilters({
       selectedCards: localCards,
       selectedCategories: localCategories,
+      selectedTags: localTags,
       direction: localDirection,
       dateRange: {
         from: localFrom || undefined,
@@ -95,6 +118,7 @@ export function FilterModal({ open, onClose }: FilterModalProps) {
     color: '#ffffff',
     outline: 'none' as const,
     width: '100%',
+    colorScheme: 'dark' as const,
   };
 
   return (
@@ -147,16 +171,7 @@ export function FilterModal({ open, onClose }: FilterModalProps) {
           >
             Filters
           </Typography>
-          <Button
-            variant="primary"
-            kind="elevated"
-            size="small"
-            colorMode="dark"
-            onClick={onClose}
-            style={{  minWidth: 'auto' }}
-          >
-            <X size={18} />
-          </Button>
+          <CloseButton onClick={onClose} variant="modal" />
         </div>
 
         <div style={{ padding: 20 }}>
@@ -221,16 +236,16 @@ export function FilterModal({ open, onClose }: FilterModalProps) {
             Categories
           </Typography>
           <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, marginBottom: 20 }}>
-            {CATEGORIES.map((cat) => (
+            {allCategories.map((cat) => (
               <Button
-                key={cat}
-                variant={localCategories.includes(cat) ? 'secondary' : 'primary'}
+                key={cat.slug}
+                variant={localCategories.includes(cat.slug) ? 'secondary' : 'primary'}
                 kind="elevated"
                 size="small"
                 colorMode="dark"
-                onClick={() => toggleCategory(cat)}
+                onClick={() => toggleCategory(cat.slug)}
               >
-                {CATEGORY_CONFIG[cat].label}
+                {cat.name}
               </Button>
             ))}
           </div>
@@ -249,6 +264,7 @@ export function FilterModal({ open, onClose }: FilterModalProps) {
             <div style={{ flex: 1 }}>
               <input
                 type="date"
+                className="filter-date-input"
                 value={localFrom}
                 onChange={(e) => setLocalFrom(e.target.value)}
                 style={inputStyle}
@@ -257,12 +273,20 @@ export function FilterModal({ open, onClose }: FilterModalProps) {
             <div style={{ flex: 1 }}>
               <input
                 type="date"
+                className="filter-date-input"
                 value={localTo}
                 onChange={(e) => setLocalTo(e.target.value)}
                 style={inputStyle}
               />
             </div>
           </div>
+          <style>{`
+            .filter-date-input::-webkit-calendar-picker-indicator {
+              filter: invert(0.7) sepia(1) saturate(5) hue-rotate(350deg);
+              cursor: pointer;
+              opacity: 1;
+            }
+          `}</style>
 
           {/* Amount Range */}
           <Typography
@@ -294,6 +318,35 @@ export function FilterModal({ open, onClose }: FilterModalProps) {
               />
             </div>
           </div>
+
+          {/* Tags */}
+          {availableTags.length > 0 && (
+            <>
+              <Typography
+                fontType={FontType.BODY}
+                fontSize={12}
+                fontWeight={FontWeights.MEDIUM}
+                color="rgba(255,255,255,0.5)"
+                style={{ marginBottom: 10 }}
+              >
+                Tags
+              </Typography>
+              <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, marginBottom: 24 }}>
+                {availableTags.map((tag) => (
+                  <Button
+                    key={tag.id}
+                    variant={localTags.includes(tag.name) ? 'secondary' : 'primary'}
+                    kind="elevated"
+                    size="small"
+                    colorMode="dark"
+                    onClick={() => toggleTag(tag.name)}
+                  >
+                    {tag.name}
+                  </Button>
+                ))}
+              </div>
+            </>
+          )}
         </div>
 
         {/* Footer */}

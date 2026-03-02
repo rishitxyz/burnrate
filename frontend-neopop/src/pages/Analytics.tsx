@@ -7,9 +7,10 @@ import { TopMerchants } from '@/components/TopMerchants';
 import { CashFlowChart } from '@/components/CashFlowChart';
 import { CardComparison } from '@/components/CardComparison';
 import { InsightCard } from '@/components/InsightCard';
+import { CloseButton } from '@/components/CloseButton';
 import { FilterModal } from '@/components/FilterModal';
 import { useFilters } from '@/contexts/FilterContext';
-import { useAnalytics, useTransactions, useCards } from '@/hooks/useApi';
+import { useAnalytics } from '@/hooks/useApi';
 import { CATEGORY_CONFIG } from '@/lib/types';
 import { formatCurrency } from '@/lib/utils';
 import { Button, Typography } from '@cred/neopop-web/lib/components';
@@ -143,8 +144,9 @@ function generateInsight(
     `You spent across ${categories.length} categories. Stay curious!`;
 }
 
-function presetFromDateRange(dr: { from?: string; to?: string }): Preset {
-  if (!dr.from || !dr.to) return '6_months';
+function presetFromDateRange(dr: { from?: string; to?: string }): Preset | undefined {
+  if (!dr.from && !dr.to) return undefined;
+  if (!dr.from || !dr.to) return 'custom';
   const now = new Date();
   const to = now.toISOString().split('T')[0]!;
   if (dr.to !== to) return 'custom';
@@ -157,52 +159,50 @@ function presetFromDateRange(dr: { from?: string; to?: string }): Preset {
 
 function AnalyticsContent() {
   const navigate = useNavigate();
-  const { filters, setFilters, hasActiveFilters } = useFilters();
+  const { filters, setFilters, hasActiveFilters, clearFilters } = useFilters();
   const [filterOpen, setFilterOpen] = useState(false);
 
-  // Derive active preset from the global filter dateRange
+  // Derive active preset from the global filter dateRange (undefined when no date range set)
   const activePreset = useMemo(() => presetFromDateRange(filters.dateRange), [filters.dateRange]);
 
-  // Use filter dateRange directly; default to 6_months when no filter set
-  const dateRange = useMemo(() => {
-    if (filters.dateRange.from || filters.dateRange.to) {
-      return filters.dateRange;
-    }
-    return getDateRangeFromPreset('6_months');
-  }, [filters.dateRange]);
-
-  const { summary, categories, trends, merchants, loading } = useAnalytics(dateRange);
-  const { transactions } = useTransactions({ limit: 500, from: dateRange.from, to: dateRange.to });
-  const { cards } = useCards();
+  const { summary, categories, trends, merchants, loading } = useAnalytics({
+    from: filters.dateRange.from,
+    to: filters.dateRange.to,
+    cards: filters.selectedCards.length > 0 ? filters.selectedCards.join(',') : undefined,
+    categories: filters.selectedCategories.length > 0 ? filters.selectedCategories.join(',') : undefined,
+    tags: filters.selectedTags?.length > 0 ? filters.selectedTags.join(',') : undefined,
+    direction: filters.direction !== 'all' ? filters.direction : undefined,
+    amountMin: filters.amountRange.min,
+    amountMax: filters.amountRange.max,
+  });
 
   const safeCategories = Array.isArray(categories) ? categories : [];
   const safeTrends = Array.isArray(trends) ? trends : [];
   const safeMerchants = Array.isArray(merchants) ? merchants : [];
-  const safeTransactions = Array.isArray(transactions) ? transactions : [];
-  const safeCards = Array.isArray(cards) ? cards : [];
 
   const avgMonthlySpend = summary?.avgMonthlySpend ?? 0;
   const monthsInRange = summary?.monthsInRange ?? 0;
 
   const creditUtilization = useMemo(() => {
     const totalLimit = summary?.creditLimit || 0;
-    if (totalLimit === 0) return { ratio: 0, spend: summary?.totalSpend ?? 0, limit: 0 };
+    const months = summary?.monthsInRange || 1;
+    if (totalLimit === 0) return { ratio: 0, spend: summary?.totalSpend ?? 0, limit: 0, months };
     const currentSpend = summary?.totalSpend ?? 0;
-    const ratio = Math.min(Math.round((currentSpend / totalLimit) * 100), 100);
-    return { ratio, spend: currentSpend, limit: totalLimit };
+    const effectiveLimit = totalLimit * months;
+    const ratio = Math.min(Math.round((currentSpend / effectiveLimit) * 100), 100);
+    return { ratio, spend: currentSpend, limit: totalLimit, months };
   }, [summary]);
 
   const cardSpend = useMemo(() => {
-    const byCard = new Map<string, { bank: import('@/lib/types').Bank; last4: string; amount: number }>();
-    for (const t of safeTransactions) {
-      if (t.type !== 'debit') continue;
-      const key = `${t.bank}-${t.cardLast4}`;
-      const curr = byCard.get(key) ?? { bank: t.bank, last4: t.cardLast4, amount: 0 };
-      curr.amount += t.amount;
-      byCard.set(key, curr);
-    }
-    return [...byCard.values()].sort((a, b) => b.amount - a.amount);
-  }, [safeTransactions]);
+    const breakdown = summary?.cardBreakdown ?? [];
+    return breakdown
+      .map((cb) => ({
+        bank: cb.bank as import('@/lib/types').Bank,
+        last4: cb.last4,
+        amount: cb.amount,
+      }))
+      .sort((a, b) => b.amount - a.amount);
+  }, [summary]);
 
   const insightText = useMemo(
     () =>
@@ -220,9 +220,9 @@ function AnalyticsContent() {
       case '6_months': return 'Last 6 months';
       case '1_year': return 'Last year';
       default:
-        if (dateRange.from && dateRange.to) {
+        if (filters.dateRange.from && filters.dateRange.to) {
           const fmt = (d: string) => new Date(d).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' });
-          return `${fmt(dateRange.from)} – ${fmt(dateRange.to)}`;
+          return `${fmt(filters.dateRange.from)} – ${fmt(filters.dateRange.to)}`;
         }
         return 'All time';
     }
@@ -231,6 +231,7 @@ function AnalyticsContent() {
   const activeCount =
     filters.selectedCards.length +
     filters.selectedCategories.length +
+    filters.selectedTags.length +
     (filters.dateRange.from ? 1 : 0) +
     (filters.dateRange.to ? 1 : 0) +
     (filters.amountRange.min !== undefined ? 1 : 0) +
@@ -242,16 +243,21 @@ function AnalyticsContent() {
       <Navbar activeTab="analytics" onTabChange={(tab) => navigate(`/${tab}`)} />
       <Content>
         <ActionBar>
-        <Button
-            variant={hasActiveFilters ? 'secondary' : 'primary'}
-            kind="elevated"
-            size="small"
-            colorMode="dark"
-            onClick={() => setFilterOpen(true)}
-          >
-            <SlidersHorizontal size={14} style={{ marginRight: 6 }} />
-            Filters {hasActiveFilters ? `(${activeCount})` : ''}
-          </Button>
+          <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+            <Button
+              variant={hasActiveFilters ? 'secondary' : 'primary'}
+              kind="elevated"
+              size="small"
+              colorMode="dark"
+              onClick={() => setFilterOpen(true)}
+            >
+              <SlidersHorizontal size={14} style={{ marginRight: 6 }} />
+              Filters {hasActiveFilters ? `(${activeCount})` : ''}
+            </Button>
+            {hasActiveFilters && (
+              <CloseButton variant="inline" onClick={clearFilters} />
+            )}
+          </div>
           <DateRangePicker
             value={activePreset}
             onChange={(p, range) => {
@@ -307,7 +313,7 @@ function AnalyticsContent() {
                   }} />
                 </div>
                 <Typography fontType={FontType.BODY} fontSize={12} fontWeight={FontWeights.REGULAR} color="rgba(255,255,255,0.5)">
-                  {formatCurrency(creditUtilization.spend)} of {formatCurrency(creditUtilization.limit)}
+                  {formatCurrency(creditUtilization.spend)} out of {formatCurrency(creditUtilization.limit)} × {creditUtilization.months}
                 </Typography>
               </>
             )}

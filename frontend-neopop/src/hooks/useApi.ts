@@ -56,11 +56,15 @@ export async function submitSetup(data: SetupProfilePayload): Promise<Settings> 
 
 export interface TransactionFilters {
   card?: string;
+  cards?: string;
   from?: string;
   to?: string;
   category?: Category;
   search?: string;
+  tags?: string;
   direction?: string;
+  amountMin?: number;
+  amountMax?: number;
   limit?: number;
   offset?: number;
 }
@@ -87,12 +91,16 @@ export function useTransactions(filters: TransactionFilters = {}) {
         limit: filters.limit ?? 50,
         offset: filters.offset ?? 0,
       };
-      if (filters.card) params.card = filters.card;
+      if (filters.cards) params.cards = filters.cards;
+      else if (filters.card) params.card = filters.card;
       if (filters.from) params.from = filters.from;
       if (filters.to) params.to = filters.to;
       if (filters.category) params.category = filters.category;
       if (filters.search) params.search = filters.search;
+      if (filters.tags) (params as Record<string, unknown>).tags = filters.tags;
       if (filters.direction) params.direction = filters.direction;
+      if (filters.amountMin !== undefined) params.amount_min = filters.amountMin;
+      if (filters.amountMax !== undefined) params.amount_max = filters.amountMax;
 
       const result = await apiGetTransactions(params);
       setTransactions(Array.isArray(result?.transactions) ? result.transactions : []);
@@ -108,11 +116,15 @@ export function useTransactions(filters: TransactionFilters = {}) {
     }
   }, [
     filters.card,
+    filters.cards,
     filters.from,
     filters.to,
     filters.category,
     filters.search,
+    filters.tags,
     filters.direction,
+    filters.amountMin,
+    filters.amountMax,
     filters.limit,
     filters.offset,
   ]);
@@ -124,12 +136,18 @@ export function useTransactions(filters: TransactionFilters = {}) {
   return { transactions, total, totalAmount, loading, error, refetch };
 }
 
-export interface DateRange {
+export interface AnalyticsFilters {
   from?: string;
   to?: string;
+  cards?: string;
+  categories?: string;
+  tags?: string;
+  direction?: string;
+  amountMin?: number;
+  amountMax?: number;
 }
 
-export function useAnalytics(dateRange: DateRange = {}) {
+export function useAnalytics(filters: AnalyticsFilters = {}) {
   const [summary, setSummary] = useState(EMPTY_SUMMARY);
   const [categories, setCategories] = useState<import('@/lib/types').CategoryBreakdown[]>([]);
   const [trends, setTrends] = useState<import('@/lib/types').MonthlyTrend[]>([]);
@@ -141,13 +159,24 @@ export function useAnalytics(dateRange: DateRange = {}) {
     setLoading(true);
     setError(null);
     try {
-      const params = dateRange.from || dateRange.to ? dateRange : undefined;
+      const params = {
+        ...(filters.from ? { from: filters.from } : {}),
+        ...(filters.to ? { to: filters.to } : {}),
+        ...(filters.cards ? { cards: filters.cards } : {}),
+        ...(filters.categories ? { categories: filters.categories } : {}),
+        ...(filters.tags ? { tags: filters.tags } : {}),
+        ...(filters.direction ? { direction: filters.direction } : {}),
+        ...(filters.amountMin !== undefined ? { amount_min: filters.amountMin } : {}),
+        ...(filters.amountMax !== undefined ? { amount_max: filters.amountMax } : {}),
+      };
+      const hasParams = Object.keys(params).length > 0;
+      const apiParams = hasParams ? params : undefined;
       const [summaryRes, categoriesRes, trendsRes, merchantsRes] =
         await Promise.all([
-          getSummary(params),
-          getCategories(params),
-          getTrends(params),
-          getMerchants(params),
+          getSummary(apiParams),
+          getCategories(apiParams),
+          getTrends(apiParams),
+          getMerchants(apiParams),
         ]);
       setSummary(
         summaryRes && typeof summaryRes.totalSpend === 'number'
@@ -166,7 +195,16 @@ export function useAnalytics(dateRange: DateRange = {}) {
     } finally {
       setLoading(false);
     }
-  }, [dateRange.from, dateRange.to]);
+  }, [
+    filters.from,
+    filters.to,
+    filters.cards,
+    filters.categories,
+    filters.tags,
+    filters.direction,
+    filters.amountMin,
+    filters.amountMax,
+  ]);
 
   useEffect(() => {
     refetch();

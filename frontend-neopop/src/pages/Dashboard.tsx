@@ -15,7 +15,8 @@ import { toast } from '@/components/Toast';
 import { Button, Typography } from '@cred/neopop-web/lib/components';
 import { ElevatedCard } from '@cred/neopop-web/lib/components';
 import { FontType, FontWeights } from '@cred/neopop-web/lib/components/Typography/types';
-import { SlidersHorizontal, X } from 'lucide-react';
+import { SlidersHorizontal } from 'lucide-react';
+import { CloseButton } from '@/components/CloseButton';
 import type { StatementPeriod } from '@/lib/api';
 import styled from 'styled-components';
 
@@ -93,6 +94,7 @@ function countActiveFilters(filters: ReturnType<typeof useFilters>['filters']): 
   let count = 0;
   count += filters.selectedCards.length;
   count += filters.selectedCategories.length;
+  count += filters.selectedTags.length;
   if (filters.dateRange.from) count++;
   if (filters.dateRange.to) count++;
   if (filters.amountRange.min !== undefined) count++;
@@ -165,16 +167,7 @@ function StatementPeriodsModal({
           <Typography fontType={FontType.BODY} fontSize={18} fontWeight={FontWeights.BOLD} color="#ffffff">
             Statement Periods
           </Typography>
-          <Button
-            variant="secondary"
-            kind="elevated"
-            size="small"
-            colorMode="dark"
-            onClick={onClose}
-            style={{ padding: '4px 8px', minWidth: 'auto' }}
-          >
-            <X size={18} />
-          </Button>
+          <CloseButton onClick={onClose} variant="modal" />
         </div>
 
         <div style={{ padding: 20 }}>
@@ -231,7 +224,7 @@ function StatementPeriodsModal({
 
 function DashboardContent() {
   const navigate = useNavigate();
-  const { filters, setFilters, hasActiveFilters } = useFilters();
+  const { filters, setFilters, hasActiveFilters, clearFilters } = useFilters();
   const [filterOpen, setFilterOpen] = useState(false);
   const [periodsModalOpen, setPeriodsModalOpen] = useState(false);
   const [periodsList, setPeriodsList] = useState<StatementPeriod[]>([]);
@@ -240,15 +233,25 @@ function DashboardContent() {
   const activeCount = countActiveFilters(filters);
 
   const filterParams = {
-    card: filters.selectedCards.length === 1 ? filters.selectedCards[0] : undefined,
+    cards: filters.selectedCards.length > 0 ? filters.selectedCards.join(',') : undefined,
     from: filters.dateRange.from,
     to: filters.dateRange.to,
     category: filters.selectedCategories.length === 1 ? filters.selectedCategories[0] : undefined,
+    tags: filters.selectedTags?.length > 0 ? filters.selectedTags.join(',') : undefined,
+    direction: filters.direction !== 'all' ? filters.direction : undefined,
+    amountMin: filters.amountRange.min,
+    amountMax: filters.amountRange.max,
   };
 
   const { summary, trends, loading } = useAnalytics({
     from: filters.dateRange.from,
     to: filters.dateRange.to,
+    cards: filters.selectedCards.length > 0 ? filters.selectedCards.join(',') : undefined,
+    categories: filters.selectedCategories.length > 0 ? filters.selectedCategories.join(',') : undefined,
+    tags: filters.selectedTags?.length > 0 ? filters.selectedTags.join(',') : undefined,
+    direction: filters.direction !== 'all' ? filters.direction : undefined,
+    amountMin: filters.amountRange.min,
+    amountMax: filters.amountRange.max,
   });
   const { transactions, loading: txLoading } = useTransactions({
     ...filterParams,
@@ -258,24 +261,7 @@ function DashboardContent() {
   const { cards, loading: cardsLoading } = useCards();
 
   const safeCards = Array.isArray(cards) ? cards : [];
-  let safeTransactions = Array.isArray(transactions) ? transactions : [];
-
-  if (filters.amountRange.min !== undefined || filters.amountRange.max !== undefined) {
-    safeTransactions = safeTransactions.filter((t) => {
-      const amt = t.type === 'debit' ? t.amount : -t.amount;
-      if (filters.amountRange.min !== undefined && amt < filters.amountRange.min!) return false;
-      if (filters.amountRange.max !== undefined && amt > filters.amountRange.max!) return false;
-      return true;
-    });
-  }
-
-  if (filters.selectedCards.length > 1) {
-    const cardSet = new Set(filters.selectedCards);
-    safeTransactions = safeTransactions.filter((t) => {
-      const card = safeCards.find((c) => c.bank === t.bank && c.last4 === t.cardLast4);
-      return card && cardSet.has(card.id);
-    });
-  }
+  const safeTransactions = Array.isArray(transactions) ? transactions : [];
 
   const safeSummary = summary && typeof summary.totalSpend === 'number' ? summary : {
     totalSpend: 0,
@@ -363,16 +349,21 @@ function DashboardContent() {
       <Navbar activeTab="dashboard" onTabChange={(tab) => navigate(`/${tab}`)} />
       <Content>
         <FilterRow>
-          <Button
-            variant={hasActiveFilters ? 'secondary' : 'primary'}
-            kind="elevated"
-            size="small"
-            colorMode="dark"
-            onClick={() => setFilterOpen(true)}
-          >
-            <SlidersHorizontal size={14} style={{ marginRight: 6 }} />
-            Filters {hasActiveFilters ? `(${activeCount})` : ''}
-          </Button>
+          <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+            <Button
+              variant={hasActiveFilters ? 'secondary' : 'primary'}
+              kind="elevated"
+              size="small"
+              colorMode="dark"
+              onClick={() => setFilterOpen(true)}
+            >
+              <SlidersHorizontal size={14} style={{ marginRight: 6 }} />
+              Filters {hasActiveFilters ? `(${activeCount})` : ''}
+            </Button>
+            {hasActiveFilters && (
+              <CloseButton onClick={clearFilters} variant="inline" />
+            )}
+          </div>
         </FilterRow>
 
         <TopRow>

@@ -6,13 +6,13 @@ import {
   useMemo,
   type ReactNode,
 } from 'react';
-import type { Category } from '@/lib/types';
 
 export type Direction = 'all' | 'incoming' | 'outgoing';
 
 export interface FilterState {
   selectedCards: string[];
-  selectedCategories: Category[];
+  selectedCategories: string[];
+  selectedTags: string[];
   dateRange: { from?: string; to?: string };
   amountRange: { min?: number; max?: number };
   direction: Direction;
@@ -28,6 +28,7 @@ export interface FilterContextValue {
 const defaultState: FilterState = {
   selectedCards: [],
   selectedCategories: [],
+  selectedTags: [],
   dateRange: {},
   amountRange: {},
   direction: 'all',
@@ -53,6 +54,7 @@ export function FilterProvider({ children }: { children: ReactNode }) {
     return (
       filters.selectedCards.length > 0 ||
       filters.selectedCategories.length > 0 ||
+      filters.selectedTags.length > 0 ||
       !!filters.dateRange.from ||
       !!filters.dateRange.to ||
       filters.amountRange.min !== undefined ||

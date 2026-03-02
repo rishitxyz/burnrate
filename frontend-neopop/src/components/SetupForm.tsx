@@ -37,11 +37,9 @@ interface SetupFormProps {
   isUpdate?: boolean;
 }
 
-const BANKS: { id: Bank; name: string; color: string }[] = [
-  { id: 'hdfc', name: 'HDFC Bank', color: BANK_CONFIG.hdfc.color },
-  { id: 'icici', name: 'ICICI Bank', color: BANK_CONFIG.icici.color },
-  { id: 'axis', name: 'Axis Bank', color: BANK_CONFIG.axis.color },
-];
+const BANKS: { id: Bank; name: string; color: string }[] = (
+  Object.entries(BANK_CONFIG) as [Bank, (typeof BANK_CONFIG)[Bank]][]
+).map(([id, config]) => ({ id, name: config.name, color: config.color }));
 
 export function SetupForm({ onSubmit, className, initialData, isUpdate = false }: SetupFormProps) {
   const [name, setName] = useState('');
@@ -169,13 +167,15 @@ export function SetupForm({ onSubmit, className, initialData, isUpdate = false }
               <Typography fontType={FontType.BODY} fontSize={12} fontWeight={FontWeights.MEDIUM} color="rgba(255,255,255,0.6)" style={{ marginBottom: 6 }}>
                 Date of Birth
               </Typography>
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1.2fr', gap: 8 }}>
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1.2fr', gap: 8, overflow: 'hidden' }}>
                 <input
                   value={dobDay}
                   onChange={(e) => setDobDay(e.target.value.replace(/\D/g, '').slice(0, 2))}
                   placeholder="DD"
                   maxLength={2}
                   style={{
+                    width: '100%',
+                    minWidth: 0,
                     boxSizing: 'border-box',
                     backgroundColor: 'rgba(255,255,255,0.05)',
                     color: '#ffffff',
@@ -193,6 +193,8 @@ export function SetupForm({ onSubmit, className, initialData, isUpdate = false }
                   placeholder="MM"
                   maxLength={2}
                   style={{
+                    width: '100%',
+                    minWidth: 0,
                     boxSizing: 'border-box',
                     backgroundColor: 'rgba(255,255,255,0.05)',
                     color: '#ffffff',
@@ -210,6 +212,8 @@ export function SetupForm({ onSubmit, className, initialData, isUpdate = false }
                   placeholder="YYYY"
                   maxLength={4}
                   style={{
+                    width: '100%',
+                    minWidth: 0,
                     boxSizing: 'border-box',
                     backgroundColor: 'rgba(255,255,255,0.05)',
                     color: '#ffffff',

@@ -90,6 +90,45 @@ class Transaction(Base):
     created_at = Column(DateTime, default=datetime.utcnow)
 
     statement = relationship("Statement", back_populates="transactions")
+    tags = relationship("TransactionTag", back_populates="transaction", cascade="all, delete-orphan")
+
+
+class TransactionTag(Base):
+    """Tag attached to a transaction."""
+
+    __tablename__ = "transaction_tags"
+
+    id = Column(String(36), primary_key=True, default=generate_uuid)
+    transaction_id = Column(String(36), ForeignKey("transactions.id", ondelete="CASCADE"), nullable=False)
+    tag = Column(String(12), nullable=False)
+    created_at = Column(DateTime, default=datetime.utcnow)
+
+    transaction = relationship("Transaction", back_populates="tags")
+
+
+class CategoryDefinition(Base):
+    """Category definition - both prebuilt and custom."""
+
+    __tablename__ = "category_definitions"
+
+    id = Column(String(36), primary_key=True, default=generate_uuid)
+    name = Column(String(50), nullable=False, unique=True)
+    slug = Column(String(50), nullable=False, unique=True)  # lowercase, underscored key used in Transaction.category
+    keywords = Column(Text, nullable=False, default="")
+    color = Column(String(9), nullable=False, default="#9CA3AF")
+    icon = Column(String(50), nullable=False, default="MoreHorizontal")
+    is_prebuilt = Column(Integer, nullable=False, default=0)  # 1=prebuilt, 0=custom
+    created_at = Column(DateTime, default=datetime.utcnow)
+
+
+class TagDefinition(Base):
+    """User-defined tag that can be applied to transactions."""
+
+    __tablename__ = "tag_definitions"
+
+    id = Column(String(36), primary_key=True, default=generate_uuid)
+    name = Column(String(12), nullable=False, unique=True)
+    created_at = Column(DateTime, default=datetime.utcnow)
 
 
 class ProcessingLog(Base):
@@ -105,3 +144,5 @@ class ProcessingLog(Base):
     transaction_count = Column(Integer, default=0)
     acknowledged = Column(Integer, default=0)  # 0=unread, 1=dismissed
     created_at = Column(DateTime, default=datetime.utcnow)
+
+

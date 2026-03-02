@@ -1,16 +1,17 @@
-import { useState, useCallback, useEffect } from 'react';
+import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Navbar } from '@/components/Navbar';
-import { CommandSearch } from '@/components/CommandSearch';
 import { TransactionRow } from '@/components/TransactionRow';
 import { FilterModal } from '@/components/FilterModal';
 import { useFilters } from '@/contexts/FilterContext';
 import { useTransactions, useCards } from '@/hooks/useApi';
 import { formatCurrency } from '@/lib/utils';
-import { Button } from '@cred/neopop-web/lib/components';
+import { CATEGORY_CONFIG, BANK_CONFIG } from '@/lib/types';
+import { Button, SearchBar } from '@cred/neopop-web/lib/components';
 import { Typography } from '@cred/neopop-web/lib/components';
 import { FontType, FontWeights } from '@cred/neopop-web/lib/components/Typography/types';
-import { SlidersHorizontal, Search, X } from 'lucide-react';
+import { SlidersHorizontal, Download } from 'lucide-react';
+import { CloseButton } from '@/components/CloseButton';
 import styled from 'styled-components';
 
 const PageLayout = styled.div`
@@ -31,6 +32,17 @@ const ActionBar = styled.div`
   margin-bottom: 20px;
   flex-wrap: wrap;
   gap: 12px;
+`;
+
+const CompactSearchWrapper = styled.div`
+  input {
+    padding: 6px 12px !important;
+    height: 0.2em !important;
+    font-size: 13px !important;
+  }
+  > div {
+    min-height: 0 !important;
+  }
 `;
 
 const FilterRow = styled.div`
@@ -70,28 +82,28 @@ const PAGE_SIZE = 20;
 
 function TransactionsContent() {
   const navigate = useNavigate();
-  const { filters, setFilters, hasActiveFilters } = useFilters();
+  const { filters, setFilters, hasActiveFilters, clearFilters } = useFilters();
   const [filterOpen, setFilterOpen] = useState(false);
-  const [searchOpen, setSearchOpen] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
-  const [searchCategories, setSearchCategories] = useState<string[]>([]);
+  const [searchInputValue, setSearchInputValue] = useState('');
+  const [searchClearKey, setSearchClearKey] = useState(0);
   const [page, setPage] = useState(0);
+  const [tooltipVisible, setTooltipVisible] = useState(false);
+  const [searchTooltipVisible, setSearchTooltipVisible] = useState(false);
 
-  const cardFilter = filters.selectedCards.length === 1 ? filters.selectedCards[0] : undefined;
   const categoryFilter =
-    searchCategories.length > 0
-      ? (searchCategories[0] as import('@/lib/types').Category)
-      : filters.selectedCategories.length === 1
-        ? filters.selectedCategories[0]
-        : undefined;
+    filters.selectedCategories.length === 1 ? filters.selectedCategories[0] : undefined;
 
   const { transactions, total, totalAmount, loading } = useTransactions({
-    card: cardFilter,
+    cards: filters.selectedCards.length > 0 ? filters.selectedCards.join(',') : undefined,
     category: categoryFilter,
     search: searchQuery || undefined,
+    tags: filters.selectedTags?.length ? filters.selectedTags.join(',') : undefined,
     from: filters.dateRange.from,
     to: filters.dateRange.to,
     direction: filters.direction !== 'all' ? filters.direction : undefined,
+    amountMin: filters.amountRange.min,
+    amountMax: filters.amountRange.max,
     limit: (page + 1) * PAGE_SIZE,
     offset: 0,
   });
@@ -99,38 +111,11 @@ function TransactionsContent() {
 
   useEffect(() => {
     setPage(0);
-  }, [filters.selectedCards, filters.selectedCategories, filters.dateRange.from, filters.dateRange.to, filters.amountRange.min, filters.amountRange.max, filters.direction]);
+  }, [filters.selectedCards, filters.selectedCategories, filters.selectedTags, filters.dateRange.from, filters.dateRange.to, filters.amountRange.min, filters.amountRange.max, filters.direction, searchQuery]);
 
   const safeTransactions = Array.isArray(transactions) ? transactions : [];
   const safeCards = Array.isArray(cards) ? cards : [];
   const safeTotal = typeof total === 'number' ? total : 0;
-
-  let filteredTransactions = safeTransactions;
-  if (filters.selectedCards.length > 1) {
-    const cardSet = new Set(filters.selectedCards);
-    filteredTransactions = filteredTransactions.filter((t) => {
-      const card = safeCards.find((c) => c.bank === t.bank && c.last4 === t.cardLast4);
-      return card && cardSet.has(card.id);
-    });
-  }
-  if (filters.amountRange.min !== undefined || filters.amountRange.max !== undefined) {
-    filteredTransactions = filteredTransactions.filter((t) => {
-      const amt = t.type === 'debit' ? t.amount : -t.amount;
-      if (filters.amountRange.min !== undefined && amt < filters.amountRange.min!) return false;
-      if (filters.amountRange.max !== undefined && amt > filters.amountRange.max!) return false;
-      return true;
-    });
-  }
-
-  const handleSearch = useCallback(
-    (query: string, searchFilters: { categories: import('@/lib/types').Category[] }) => {
-      setSearchQuery(query);
-      setSearchCategories(searchFilters.categories);
-      setPage(0);
-      setSearchOpen(false);
-    },
-    []
-  );
 
   const handleCardToggle = (cardId: string) => {
     setFilters({
@@ -150,8 +135,67 @@ function TransactionsContent() {
     setPage((p) => p + 1);
   };
 
-  const groupedByDate = filteredTransactions.reduce<
-    Record<string, typeof filteredTransactions>
+  const handleExport = async () => {
+    if (safeTransactions.length === 0) return;
+
+    const proceed = window.confirm(
+      'Warning: Do not save this file in your statements watch folder to avoid re-processing.\n\nProceed with export?'
+    );
+    if (!proceed) return;
+
+    const escapeCSV = (val: string) => {
+      if (val.includes(',') || val.includes('"') || val.includes('\n')) {
+        return `"${val.replace(/"/g, '""')}"`;
+      }
+      return val;
+    };
+
+    const header = 'Date,Description,Category,Currency,Amount,Card';
+    const rows = safeTransactions.map((tx) => {
+      const catLabel = CATEGORY_CONFIG[tx.category]?.label ?? tx.category;
+      const bankName = BANK_CONFIG[tx.bank]?.name ?? tx.bank;
+      const signedAmount = tx.type === 'debit' ? -tx.amount : tx.amount;
+      const card = `${bankName}_${tx.cardLast4}`;
+      return [
+        tx.date,
+        escapeCSV(tx.merchant),
+        escapeCSV(catLabel),
+        'INR',
+        signedAmount.toFixed(2),
+        escapeCSV(card),
+      ].join(',');
+    });
+
+    const csv = [header, ...rows].join('\n');
+    const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+
+    if ('showSaveFilePicker' in window) {
+      try {
+        const handle = await (window as Window & { showSaveFilePicker: (opts: { suggestedName?: string; types?: { description: string; accept: Record<string, string[]> }[] }) => Promise<FileSystemFileHandle> }).showSaveFilePicker({
+          suggestedName: `burnrate_transactions_${new Date().toISOString().split('T')[0]}.csv`,
+          types: [{ description: 'CSV File', accept: { 'text/csv': ['.csv'] } }],
+        });
+        const writable = await handle.createWritable();
+        await writable.write(blob);
+        await writable.close();
+        return;
+      } catch {
+        // User cancelled or API not supported
+        return;
+      }
+    }
+
+    // Fallback for browsers without File System Access API
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = `burnrate_transactions_${new Date().toISOString().split('T')[0]}.csv`;
+    link.click();
+    URL.revokeObjectURL(url);
+  };
+
+  const groupedByDate = safeTransactions.reduce<
+    Record<string, typeof safeTransactions>
   >(
     (acc, tx) => {
       const date = tx.date;
@@ -165,6 +209,7 @@ function TransactionsContent() {
   const activeCount =
     filters.selectedCards.length +
     filters.selectedCategories.length +
+    (filters.selectedTags?.length ?? 0) +
     (filters.dateRange.from ? 1 : 0) +
     (filters.dateRange.to ? 1 : 0) +
     (filters.amountRange.min !== undefined ? 1 : 0) +
@@ -176,42 +221,82 @@ function TransactionsContent() {
       <Navbar activeTab="transactions" onTabChange={(tab) => navigate(`/${tab}`)} />
       <Content>
         <ActionBar>
-          <Button
-            variant={hasActiveFilters ? 'secondary' : 'primary'}
-            kind="elevated"
-            size="small"
-            colorMode="dark"
-            onClick={() => setFilterOpen(true)}
-          >
-            <SlidersHorizontal size={14} style={{ marginRight: 6 }} />
-            Filters {hasActiveFilters ? `(${activeCount})` : ''}
-          </Button>
-          <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
+          <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
             <Button
-              variant={searchQuery ? 'secondary' : searchOpen ? 'secondary' : 'primary'}
+              variant={hasActiveFilters ? 'secondary' : 'primary'}
               kind="elevated"
               size="small"
               colorMode="dark"
-              onClick={() => setSearchOpen(true)}
+              onClick={() => setFilterOpen(true)}
             >
-              <Search size={14} style={{ marginRight: 6 }} />
-              {searchQuery ? `"${searchQuery}"` : 'Search'}
-              {!searchQuery && <kbd style={{ marginLeft: 6, fontSize: 10, opacity: 0.7 }}>⌘K</kbd>}
+              <SlidersHorizontal size={14} style={{ marginRight: 6 }} />
+              Filters {hasActiveFilters ? `(${activeCount})` : ''}
             </Button>
-            {searchQuery && (
-              <Button
-                variant="secondary"
-                kind="elevated"
-                size="small"
-                colorMode="dark"
-                onClick={() => {
-                  setSearchQuery('');
-                  setSearchCategories([]);
-                  setPage(0);
+            {hasActiveFilters && (
+              <CloseButton onClick={clearFilters} variant="inline" />
+            )}
+          </div>
+          <div
+            style={{
+              display: 'flex',
+              gap: 6,
+              alignItems: 'center',
+              marginLeft: 'auto',
+              maxWidth: 400,
+              position: 'relative',
+            }}
+            onMouseEnter={() => setSearchTooltipVisible(true)}
+            onMouseLeave={() => setSearchTooltipVisible(false)}
+          >
+            {searchTooltipVisible && !searchQuery && (
+              <div
+                style={{
+                  position: 'absolute',
+                  top: '100%',
+                  right: 0,
+                  marginTop: 6,
+                  background: '#1a1a1a',
+                  border: '1px solid rgba(255,255,255,0.15)',
+                  borderRadius: 8,
+                  padding: '6px 10px',
+                  fontSize: 11,
+                  color: 'rgba(255,255,255,0.6)',
+                  zIndex: 10,
+                  whiteSpace: 'nowrap',
                 }}
               >
-                <X size={14} />
-              </Button>
+                Search by description or merchant name
+              </div>
+            )}
+            <CompactSearchWrapper>
+            <SearchBar
+              key={searchClearKey}
+              placeholder="Search transactions..."
+              colorMode={searchQuery ? 'light' : 'dark'}
+              handleSearchInput={(value: string) => setSearchInputValue(value)}
+              onSubmit={() => {
+                setSearchQuery(searchInputValue);
+                setPage(0);
+              }}
+              // todo: reduce vertical size of the search bar
+              colorConfig={{
+                border: 'rgba(255,255,255,0.2)',
+                activeBorder: '#ffffff',
+                backgroundColor: searchQuery ? '#ffffff' : 'rgba(255,255,255,0.05)',
+                closeIcon: '#FF8744',
+              }}
+            />
+            </CompactSearchWrapper>
+            {searchQuery && (
+              <CloseButton
+                onClick={() => {
+                  setSearchQuery('');
+                  setSearchInputValue('');
+                  setSearchClearKey((k) => k + 1);
+                  setPage(0);
+                }}
+                variant="inline"
+              />
             )}
           </div>
         </ActionBar>
@@ -245,23 +330,86 @@ function TransactionsContent() {
             <Typography fontType={FontType.BODY} fontSize={12} fontWeight={FontWeights.REGULAR} color="rgba(255,255,255,0.5)">
               {safeTotal} transaction{safeTotal !== 1 ? 's' : ''}
             </Typography>
-            <Typography fontType={FontType.BODY} fontSize={20} fontWeight={FontWeights.SEMI_BOLD} color="#ffffff">
-              {formatCurrency(totalAmount)}
-            </Typography>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+              <Typography fontType={FontType.BODY} fontSize={20} fontWeight={FontWeights.SEMI_BOLD} color="#ffffff">
+                {formatCurrency(totalAmount)} spent
+              </Typography>
+              {totalAmount < 0 && (
+                <div style={{ position: 'relative', display: 'inline-flex' }}>
+                  <span
+                    style={{
+                      width: 18,
+                      height: 18,
+                      borderRadius: '50%',
+                      border: '1px solid rgba(255,255,255,0.3)',
+                      display: 'inline-flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      fontSize: 11,
+                      color: 'rgba(255,255,255,0.5)',
+                      cursor: 'help',
+                    }}
+                    onMouseEnter={() => setTooltipVisible(true)}
+                    onMouseLeave={() => setTooltipVisible(false)}
+                  >
+                    ?
+                  </span>
+                  {tooltipVisible && (
+                    <div
+                      style={{
+                        position: 'absolute',
+                        bottom: '100%',
+                        left: '50%',
+                        transform: 'translateX(-50%)',
+                        marginBottom: 6,
+                        background: '#1a1a1a',
+                        border: '1px solid rgba(255,255,255,0.15)',
+                        borderRadius: 8,
+                        padding: '8px 12px',
+                        fontSize: 12,
+                        color: 'rgba(255,255,255,0.7)',
+                        zIndex: 10,
+                        whiteSpace: 'nowrap',
+                      }}
+                    >
+                      Negative value means overall credit i.e. negative spends
+                    </div>
+                  )}
+                </div>
+              )}
+            </div>
           </div>
+          <Button
+            variant="primary"
+            kind="elevated"
+            size="small"
+            colorMode="dark"
+            onClick={handleExport}
+          >
+            <Download size={14} style={{ marginRight: 6 }} />
+            Export
+          </Button>
         </Header>
 
-        <CommandSearch
-          open={searchOpen}
-          onClose={() => setSearchOpen(false)}
-          onSearch={handleSearch}
-        />
+        <div
+          style={{
+            background: 'rgba(255,135,68,0.08)',
+            border: '1px solid rgba(255,135,68,0.15)',
+            borderRadius: 8,
+            padding: '10px 16px',
+            marginBottom: 16,
+          }}
+        >
+          <Typography fontType={FontType.BODY} fontSize={12} fontWeight={FontWeights.REGULAR} color="rgba(255,255,255,0.5)">
+            CC Bill Payment transactions are not part of your spends and are as such not used for any computations.
+          </Typography>
+        </div>
 
         {loading ? (
           <Typography fontType={FontType.BODY} fontSize={14} color="rgba(255,255,255,0.5)">
             Loading...
           </Typography>
-        ) : filteredTransactions.length === 0 ? (
+        ) : safeTransactions.length === 0 ? (
           <div style={{ padding: 48, textAlign: 'center' }}>
             <Typography fontType={FontType.BODY} fontSize={16} fontWeight={FontWeights.REGULAR} color="rgba(255,255,255,0.6)">
               No transactions found. Import credit card statements or adjust your filters.

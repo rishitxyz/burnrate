@@ -1,3 +1,4 @@
+import { useState, useEffect } from 'react';
 import {
   PieChart,
   Pie,
@@ -17,11 +18,18 @@ interface CategoryDonutProps {
   className?: string;
 }
 
-function CustomTooltip({ active, payload }: TooltipProps<number, string>) {
+function CustomTooltip({
+  active,
+  payload,
+  catMap,
+}: TooltipProps<number, string> & {
+  catMap: Record<string, { name: string; color: string }>;
+}) {
   if (!active || !payload?.length) return null;
   const entry = payload[0];
   const category = entry.name as string;
   const config = CATEGORY_CONFIG[category as keyof typeof CATEGORY_CONFIG];
+  const color = catMap[category]?.color ?? CATEGORY_COLORS[category as keyof typeof CATEGORY_COLORS] ?? CATEGORY_COLORS.other;
   return (
     <div
       style={{
@@ -36,10 +44,10 @@ function CustomTooltip({ active, payload }: TooltipProps<number, string>) {
         style={{
           fontSize: 12,
           fontWeight: 600,
-          color: CATEGORY_COLORS[category as keyof typeof CATEGORY_COLORS] ?? CATEGORY_COLORS.other,
+          color,
         }}
       >
-        {config?.label ?? category}
+        {catMap[category]?.name ?? config?.label ?? category}
       </p>
       <p style={{ color: '#ffffff', fontSize: 14, fontWeight: 600 }}>
         {formatCurrency(entry.value as number)}
@@ -49,7 +57,19 @@ function CustomTooltip({ active, payload }: TooltipProps<number, string>) {
 }
 
 export function CategoryDonut({ data, className }: CategoryDonutProps) {
+  const [catMap, setCatMap] = useState<Record<string, { name: string; color: string }>>({});
   const total = data.reduce((sum, d) => sum + d.amount, 0);
+
+  useEffect(() => {
+    fetch('http://localhost:8000/api/categories/all')
+      .then((r) => r.json())
+      .then((data: any[]) => {
+        const map: Record<string, { name: string; color: string }> = {};
+        for (const c of data) map[c.slug] = { name: c.name, color: c.color };
+        setCatMap(map);
+      })
+      .catch(() => {});
+  }, []);
 
   return (
     <div
@@ -76,17 +96,21 @@ export function CategoryDonut({ data, className }: CategoryDonutProps) {
                 strokeWidth={0}
               >
                 {data.map((entry) => (
-                  <Cell key={entry.category} fill={CATEGORY_COLORS[entry.category] ?? CATEGORY_COLORS.other} />
+                  <Cell
+                    key={entry.category}
+                    fill={catMap[entry.category]?.color ?? CATEGORY_COLORS[entry.category as keyof typeof CATEGORY_COLORS] ?? CATEGORY_COLORS.other}
+                  />
                 ))}
               </Pie>
-              <Tooltip content={<CustomTooltip />} />
+              <Tooltip content={<CustomTooltip catMap={catMap} />} />
             </PieChart>
           </ResponsiveContainer>
         </div>
 
         <div style={{ display: 'flex', flexDirection: 'column', gap: 10, flex: 1, minWidth: 0 }}>
           {data.slice(0, 6).map((entry) => {
-            const config = CATEGORY_CONFIG[entry.category];
+            const config = CATEGORY_CONFIG[entry.category as keyof typeof CATEGORY_CONFIG];
+            const color = catMap[entry.category]?.color ?? CATEGORY_COLORS[entry.category as keyof typeof CATEGORY_COLORS] ?? CATEGORY_COLORS.other;
             const pct = total > 0 ? Math.round((entry.amount / total) * 100) : 0;
             return (
               <div key={entry.category} style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
@@ -96,7 +120,7 @@ export function CategoryDonut({ data, className }: CategoryDonutProps) {
                     height: 12,
                     borderRadius: '50%',
                     flexShrink: 0,
-                    backgroundColor: CATEGORY_COLORS[entry.category],
+                    backgroundColor: color,
                   }}
                 />
                 <Typography
@@ -106,7 +130,7 @@ export function CategoryDonut({ data, className }: CategoryDonutProps) {
                   color="#ffffff"
                   style={{ flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}
                 >
-                  {config?.label ?? entry.category}
+                  {catMap[entry.category]?.name ?? config?.label ?? entry.category}
                 </Typography>
                 <Typography fontType={FontType.BODY} fontSize={12} fontWeight={FontWeights.SEMI_BOLD} color="#ffffff" style={{ flexShrink: 0 }}>
                   {pct}%

@@ -18,8 +18,8 @@ const PRESETS: { id: Preset; label: string }[] = [
   { id: 'custom', label: 'Custom' },
 ];
 
-export function DateRangePicker({ value = 'this_month', onChange, className }: DateRangePickerProps) {
-  const [selected, setSelected] = useState<Preset>(value);
+export function DateRangePicker({ value, onChange, className }: DateRangePickerProps) {
+  const [selected, setSelected] = useState<Preset | undefined>(value);
   const [showCustom, setShowCustom] = useState(value === 'custom');
   const [from, setFrom] = useState('');
   const [to, setTo] = useState('');
@@ -59,6 +59,7 @@ export function DateRangePicker({ value = 'this_month', onChange, className }: D
           <Calendar size={16} color="#ffffff" />
           <input
             type="date"
+            className="filter-date-input"
             value={from}
             onChange={(e) => {
               setFrom(e.target.value);
@@ -72,11 +73,13 @@ export function DateRangePicker({ value = 'this_month', onChange, className }: D
               border: '1px solid rgba(255,255,255,0.2)',
               outline: 'none',
               fontSize: 14,
+              colorScheme: 'dark',
             }}
           />
           <span style={{ color: 'rgba(255,255,255,0.5)', fontSize: 12 }}>to</span>
           <input
             type="date"
+            className="filter-date-input"
             value={to}
             onChange={(e) => {
               setTo(e.target.value);
@@ -90,10 +93,18 @@ export function DateRangePicker({ value = 'this_month', onChange, className }: D
               border: '1px solid rgba(255,255,255,0.2)',
               outline: 'none',
               fontSize: 14,
+              colorScheme: 'dark',
             }}
           />
         </div>
       )}
+      <style>{`
+        .filter-date-input::-webkit-calendar-picker-indicator {
+          filter: invert(0.7) sepia(1) saturate(5) hue-rotate(350deg);
+          cursor: pointer;
+          opacity: 1;
+        }
+      `}</style>
     </div>
   );
 }

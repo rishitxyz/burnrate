@@ -1,6 +1,6 @@
 import { Button, Typography } from '@cred/neopop-web/lib/components';
 import { FontType, FontWeights } from '@cred/neopop-web/lib/components/Typography/types';
-import { Settings, CreditCard } from 'lucide-react';
+import { Settings } from 'lucide-react';
 
 interface NavbarProps {
   activeTab?: string;
@@ -13,6 +13,7 @@ const TABS = [
   { id: 'cards', label: 'Cards' },
   { id: 'transactions', label: 'Transactions' },
   { id: 'analytics', label: 'Analytics' },
+  { id: 'customize', label: 'Customize' },
 ];
 
 export function Navbar({ activeTab = 'dashboard', onTabChange, className }: NavbarProps) {
@@ -34,7 +35,7 @@ export function Navbar({ activeTab = 'dashboard', onTabChange, className }: Navb
       className={className}
     >
       <div style={{ position: 'absolute', left: 24, display: 'flex', alignItems: 'center', gap: 8 }}>
-        <CreditCard size={20} color="#FF8744" />
+        <img src="/burnrate-logo.svg" alt="" width={24} height={24} style={{ display: 'block' }} />
         <Typography fontType={FontType.BODY} fontSize={16} fontWeight={FontWeights.BOLD} color="#ffffff" style={{ letterSpacing: '-0.02em' }}>
           burnrate
         </Typography>

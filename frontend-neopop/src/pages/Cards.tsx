@@ -11,6 +11,7 @@ import { deleteCard } from '@/lib/api';
 import { formatCurrency } from '@/lib/utils';
 import { toast } from '@/components/Toast';
 import { Trash2, SlidersHorizontal, Plus } from 'lucide-react';
+import { CloseButton } from '@/components/CloseButton';
 import styled from 'styled-components';
 
 const PageLayout = styled.div`
@@ -108,6 +109,7 @@ function countActiveFilters(filters: ReturnType<typeof useFilters>['filters']): 
   let count = 0;
   count += filters.selectedCards.length;
   count += filters.selectedCategories.length;
+  count += filters.selectedTags.length;
   if (filters.dateRange.from) count++;
   if (filters.dateRange.to) count++;
   if (filters.amountRange.min !== undefined) count++;
@@ -118,12 +120,18 @@ function countActiveFilters(filters: ReturnType<typeof useFilters>['filters']): 
 
 export function Cards() {
   const navigate = useNavigate();
-  const { filters, setFilters, hasActiveFilters } = useFilters();
+  const { filters, setFilters, hasActiveFilters, clearFilters } = useFilters();
   const [filterOpen, setFilterOpen] = useState(false);
   const { cards, loading, refetch: refetchCards } = useCards();
   const { summary } = useAnalytics({
     from: filters.dateRange.from,
     to: filters.dateRange.to,
+    cards: filters.selectedCards.length > 0 ? filters.selectedCards.join(',') : undefined,
+    categories: filters.selectedCategories.length > 0 ? filters.selectedCategories.join(',') : undefined,
+    tags: filters.selectedTags?.length > 0 ? filters.selectedTags.join(',') : undefined,
+    direction: filters.direction !== 'all' ? filters.direction : undefined,
+    amountMin: filters.amountRange.min,
+    amountMax: filters.amountRange.max,
   });
 
   const activeCount = countActiveFilters(filters);
@@ -178,16 +186,21 @@ export function Cards() {
         </SectionTitle>
 
         <FilterRow>
-          <Button
-            variant={hasActiveFilters ? 'secondary' : 'primary'}
-            kind="elevated"
-            size="small"
-            colorMode="dark"
-            onClick={() => setFilterOpen(true)}
-          >
-            <SlidersHorizontal size={14} style={{ marginRight: 6 }} />
-            Filters {hasActiveFilters ? `(${activeCount})` : ''}
-          </Button>
+          <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+            <Button
+              variant={hasActiveFilters ? 'secondary' : 'primary'}
+              kind="elevated"
+              size="small"
+              colorMode="dark"
+              onClick={() => setFilterOpen(true)}
+            >
+              <SlidersHorizontal size={14} style={{ marginRight: 6 }} />
+              Filters {hasActiveFilters ? `(${activeCount})` : ''}
+            </Button>
+            {hasActiveFilters && (
+              <CloseButton onClick={clearFilters} variant="inline" />
+            )}
+          </div>
           <Button
             variant="primary"
             kind="elevated"

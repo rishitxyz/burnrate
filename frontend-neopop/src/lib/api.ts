@@ -45,11 +45,14 @@ export interface SetupProfilePayload {
 
 export interface GetTransactionsParams {
   card?: string;
+  cards?: string;
   from?: string;
   to?: string;
   category?: Category;
   search?: string;
   direction?: string;
+  amount_min?: number;
+  amount_max?: number;
   limit?: number;
   offset?: number;
 }
@@ -234,20 +237,25 @@ export async function getStatementPeriods(params?: { from?: string; to?: string 
   return data;
 }
 
-export async function getSummary(params?: {
+export interface AnalyticsParams {
   from?: string;
   to?: string;
-}): Promise<GetSummaryResponse> {
+  cards?: string;
+  categories?: string;
+  tags?: string;
+  direction?: string;
+  amount_min?: number;
+  amount_max?: number;
+}
+
+export async function getSummary(params?: AnalyticsParams): Promise<GetSummaryResponse> {
   const { data } = await api.get<GetSummaryResponse>('/analytics/summary', {
     params,
   });
   return data;
 }
 
-export async function getCategories(params?: {
-  from?: string;
-  to?: string;
-}): Promise<GetCategoriesResponse> {
+export async function getCategories(params?: AnalyticsParams): Promise<GetCategoriesResponse> {
   const { data } = await api.get<GetCategoriesResponse>(
     '/analytics/categories',
     { params }
@@ -255,20 +263,14 @@ export async function getCategories(params?: {
   return data;
 }
 
-export async function getTrends(params?: {
-  from?: string;
-  to?: string;
-}): Promise<GetTrendsResponse> {
+export async function getTrends(params?: AnalyticsParams): Promise<GetTrendsResponse> {
   const { data } = await api.get<GetTrendsResponse>('/analytics/trends', {
     params,
   });
   return data;
 }
 
-export async function getMerchants(params?: {
-  from?: string;
-  to?: string;
-}): Promise<GetMerchantsResponse> {
+export async function getMerchants(params?: AnalyticsParams): Promise<GetMerchantsResponse> {
   const { data } = await api.get<GetMerchantsResponse>(
     '/analytics/merchants',
     { params }
@@ -295,4 +297,86 @@ export async function getProcessingLogs(): Promise<ProcessingLog[]> {
 
 export async function acknowledgeProcessingLog(logId: string): Promise<void> {
   await api.post(`/statements/processing-logs/${logId}/ack`);
+}
+
+export async function getTransactionTags(transactionId: string): Promise<string[]> {
+  const { data } = await api.get<{ tags: string[] }>(`/transactions/${transactionId}/tags`);
+  return data.tags;
+}
+
+export async function updateTransactionTags(transactionId: string, tags: string[]): Promise<string[]> {
+  const { data } = await api.put<{ tags: string[] }>(`/transactions/${transactionId}/tags`, { tags });
+  return data.tags;
+}
+
+export async function deleteStatement(statementId: string): Promise<{ status: string; message: string }> {
+  const { data } = await api.delete<{ status: string; message: string }>(`/statements/${statementId}`);
+  return data;
+}
+
+export async function reparseStatement(statementId: string): Promise<{ status: string; count?: number; bank?: string }> {
+  const { data } = await api.post<{ status: string; count?: number; bank?: string }>(`/statements/${statementId}/reparse`);
+  return data;
+}
+
+// Categories - unified
+export interface CategoryResponse {
+  id: string;
+  name: string;
+  slug: string;
+  keywords: string;
+  color: string;
+  icon: string;
+  is_prebuilt: boolean;
+}
+
+export async function getAllCategories(): Promise<CategoryResponse[]> {
+  const { data } = await api.get<CategoryResponse[]>('/categories/all');
+  return data;
+}
+
+export async function createCategory(payload: { name: string; keywords: string; color: string }): Promise<CategoryResponse> {
+  const { data } = await api.post<CategoryResponse>('/categories/custom', payload);
+  return data;
+}
+
+export async function updateCategory(categoryId: string, payload: { name?: string; keywords?: string; color?: string }): Promise<CategoryResponse> {
+  const { data } = await api.put<CategoryResponse>(`/categories/${categoryId}`, payload);
+  return data;
+}
+
+export async function deleteCategoryById(categoryId: string): Promise<{ status: string }> {
+  const { data } = await api.delete<{ status: string }>(`/categories/custom/${categoryId}`);
+  return data;
+}
+
+export async function triggerRecategorize(): Promise<{ status: string; updated: number }> {
+  const { data } = await api.post<{ status: string; updated: number }>('/categories/recategorize');
+  return data;
+}
+
+// Tag definitions
+export interface TagDefinitionResponse {
+  id: string;
+  name: string;
+}
+
+export async function getTagDefinitions(): Promise<TagDefinitionResponse[]> {
+  const { data } = await api.get<TagDefinitionResponse[]>('/tags');
+  return data;
+}
+
+export async function createTagDefinition(name: string): Promise<TagDefinitionResponse> {
+  const { data } = await api.post<TagDefinitionResponse>('/tags', { name });
+  return data;
+}
+
+export async function deleteTagDefinition(tagId: string): Promise<{ status: string }> {
+  const { data } = await api.delete<{ status: string }>(`/tags/${tagId}`);
+  return data;
+}
+
+export async function reparseAllStatements(): Promise<{ status: string; total: number; success: number; failed: number; skipped: number }> {
+  const { data } = await api.post<{ status: string; total: number; success: number; failed: number; skipped: number }>('/statements/reparse-all', {}, { timeout: 300000 });
+  return data;
 }

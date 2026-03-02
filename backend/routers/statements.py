@@ -1,17 +1,23 @@
 """Statement API endpoints."""
 
+import concurrent.futures
 import os
-import tempfile
+import shutil
+from pathlib import Path
 from typing import Any, Dict, List, Optional
+from uuid import uuid4
 
 from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile
 from sqlalchemy.orm import Session
 
-from backend.models.database import get_db
-from backend.models.models import ProcessingLog, Statement
+from backend.models.database import SessionLocal, get_db
+from backend.models.models import ProcessingLog, Statement, Transaction
 from backend.services.statement_processor import process_statement
 
 router = APIRouter(prefix="/statements", tags=["statements"])
+
+UPLOADS_DIR = Path(__file__).resolve().parent.parent / "data" / "uploads"
+UPLOADS_DIR.mkdir(parents=True, exist_ok=True)
 
 
 @router.post("/upload")
@@ -25,26 +31,62 @@ def upload_statement(
     if not file.filename or not file.filename.lower().endswith(".pdf"):
         raise HTTPException(status_code=400, detail="PDF file required")
 
-    with tempfile.NamedTemporaryFile(delete=False, suffix=".pdf") as tmp:
+    safe_name = f"{uuid4().hex}_{file.filename}"
+    persistent_path = str(UPLOADS_DIR / safe_name)
+    with open(persistent_path, "wb") as f:
         content = file.file.read()
-        tmp.write(content)
-        tmp_path = tmp.name
+        f.write(content)
 
+    result = process_statement(
+        pdf_path=persistent_path,
+        bank=bank.lower() if bank else None,
+        db_session=db,
+        manual_password=password,
+    )
+    return result
+
+
+def _process_one_statement(file_path: str, bank: Optional[str]) -> Dict[str, Any]:
+    """Process a single statement file in a worker thread."""
+    session = SessionLocal()
     try:
-        result = process_statement(
-            pdf_path=tmp_path,
-            bank=bank.lower() if bank else None,
-            db_session=db,
-            manual_password=password,
-        )
-        return result
+        return process_statement(pdf_path=file_path, bank=bank, db_session=session)
     finally:
-        if os.path.isfile(tmp_path):
+        session.close()
+
+
+@router.post("/reparse-all")
+def reparse_all_statements(db: Session = Depends(get_db)) -> Dict[str, Any]:
+    """Queue all statements for reparsing with max 10 concurrent."""
+    stmts = db.query(Statement).all()
+    if not stmts:
+        return {"status": "ok", "total": 0, "queued": 0, "skipped": 0}
+
+    results = {"total": len(stmts), "success": 0, "failed": 0, "skipped": 0}
+
+    valid_paths = [(s.file_path, s.bank) for s in stmts if s.file_path and os.path.isfile(s.file_path)]
+
+    for stmt in stmts:
+        if not stmt.file_path or not os.path.isfile(stmt.file_path):
+            results["skipped"] += 1
+            continue
+        db.query(Transaction).filter(Transaction.statement_id == stmt.id).delete()
+        db.delete(stmt)
+    db.commit()
+
+    with concurrent.futures.ThreadPoolExecutor(max_workers=10) as executor:
+        futures = {executor.submit(_process_one_statement, path, bank): path for path, bank in valid_paths}
+        for future in concurrent.futures.as_completed(futures):
             try:
-                os.remove(tmp_path)
-            except OSError:
-                # logger.error(f"Error removing temporary file {tmp_path}: {e}")
-                pass
+                result = future.result()
+                if result.get("status") == "success":
+                    results["success"] += 1
+                else:
+                    results["failed"] += 1
+            except Exception:
+                results["failed"] += 1
+
+    return {"status": "ok", **results}
 
 
 @router.get("")
@@ -100,3 +142,39 @@ def acknowledge_log(log_id: str, db: Session = Depends(get_db)) -> Dict[str, str
         log.acknowledged = 1
         db.commit()
     return {"status": "ok"}
+
+
+@router.delete("/{statement_id}")
+def delete_statement(statement_id: str, db: Session = Depends(get_db)) -> Dict[str, str]:
+    """Delete a statement and cascade to its transactions."""
+    stmt = db.query(Statement).filter(Statement.id == statement_id).first()
+    if not stmt:
+        raise HTTPException(status_code=404, detail="Statement not found")
+    db.query(Transaction).filter(Transaction.statement_id == statement_id).delete()
+    db.delete(stmt)
+    db.commit()
+    return {"status": "ok", "message": "Statement and transactions deleted"}
+
+
+@router.post("/{statement_id}/reparse")
+def reparse_statement(statement_id: str, db: Session = Depends(get_db)) -> Dict[str, Any]:
+    """Reparse a statement from its stored file_path."""
+    stmt = db.query(Statement).filter(Statement.id == statement_id).first()
+    if not stmt:
+        raise HTTPException(status_code=404, detail="Statement not found")
+
+    file_path = stmt.file_path
+    if not file_path or not os.path.isfile(file_path):
+        detail = (
+            "Original PDF file not found on disk. "
+            "This can happen if the statement was uploaded via the API before "
+            "persistent file storage was enabled, or if the source file was moved/deleted."
+        )
+        raise HTTPException(status_code=400, detail=detail)
+
+    db.query(Transaction).filter(Transaction.statement_id == statement_id).delete()
+    db.delete(stmt)
+    db.commit()
+
+    result = process_statement(pdf_path=file_path, db_session=db)
+    return result

@@ -6,6 +6,7 @@ import { Dashboard } from '@/pages/Dashboard';
 import { Cards } from '@/pages/Cards';
 import { Transactions } from '@/pages/Transactions';
 import { Analytics } from '@/pages/Analytics';
+import { Customize } from '@/pages/Customize';
 import { FilterProvider } from '@/contexts/FilterContext';
 import { useSettings, useProcessingLogPoller } from '@/hooks/useApi';
 
@@ -70,6 +71,7 @@ export default function App() {
         <Route path="/cards" element={<Cards />} />
         <Route path="/transactions" element={<Transactions />} />
         <Route path="/analytics" element={<Analytics />} />
+        <Route path="/customize" element={<Customize />} />
       </Routes>
       </FilterProvider>
     </BrowserRouter>
