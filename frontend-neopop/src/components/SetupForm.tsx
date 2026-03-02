@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { Button, InputField, Row, VerticalSpacer } from '@cred/neopop-web/lib/components';
+import { Button, InputField, Row } from '@cred/neopop-web/lib/components';
 import { Typography } from '@cred/neopop-web/lib/components';
 import { colorPalette, mainColors } from '@cred/neopop-web/lib/primitives';
 import { FontType, FontWeights } from '@cred/neopop-web/lib/components/Typography/types';
@@ -65,7 +65,7 @@ export function SetupForm({ onSubmit, className, initialData, isUpdate = false }
 
   const handleBrowse = async () => {
     try {
-      const { data } = await axios.post('http://localhost:8000/api/settings/browse-folder');
+      const { data } = await axios.post('/api/settings/browse-folder');
       if (data.path) {
         setWatchFolder(data.path);
         return;

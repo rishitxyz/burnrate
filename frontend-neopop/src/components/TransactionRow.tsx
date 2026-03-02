@@ -26,7 +26,7 @@ let _categoryCachePromise: Promise<void> | null = null;
 function loadCategoryCache(): Promise<void> {
   if (_categoryCache) return Promise.resolve();
   if (_categoryCachePromise) return _categoryCachePromise;
-  _categoryCachePromise = fetch('http://localhost:8000/api/categories/all')
+  _categoryCachePromise = fetch('/api/categories/all')
     .then((r) => r.json())
     .then((data: any[]) => {
       _categoryCache = {};
@@ -72,7 +72,7 @@ export function TransactionRow({ transaction, className }: TransactionRowProps) 
   }, []);
 
   useEffect(() => {
-    fetch('http://localhost:8000/api/tags')
+    fetch('/api/tags')
       .then((r) => r.json())
       .then((data: any[]) => setAvailableTags(data.map((t: any) => t.name)))
       .catch(() => {});

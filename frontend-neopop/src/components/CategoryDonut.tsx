@@ -56,7 +56,7 @@ export function CategoryDonut({ data, className }: CategoryDonutProps) {
   const total = data.reduce((sum, d) => sum + d.amount, 0);
 
   useEffect(() => {
-    fetch('http://localhost:8000/api/categories/all')
+    fetch('/api/categories/all')
       .then((r) => r.json())
       .then((data: any[]) => {
         const map: Record<string, { name: string; color: string }> = {};

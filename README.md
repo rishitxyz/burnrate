@@ -12,7 +12,8 @@ Burnrate is a personal finance analytics app that runs entirely on your laptop. 
 - **Auto-import** — Drop PDF statements or set up a watch folder for automatic processing
 - **Smart categorization** — Transactions auto-categorized with customizable categories and keywords
 - **Rich analytics** — Spend trends, category breakdowns, merchant insights, credit utilization
-- **Multi-card filtering** — Filter by cards, categories, date range, amount, direction, and tags
+- **Multi-card filtering across transactions and metrics** — Filter by cards, categories, date range, amount, direction, and tags
+- **Multiple Views** - Analyze transactions per statement, consolidate across multiple cards, or apply flexible filters for any custom combination.
 - **Transaction tagging** — Define and apply custom tags to transactions
 - **CSV export** — Export filtered transactions for external analysis
 - **Statement management** — Reparse or remove imported statements
@@ -31,9 +32,6 @@ Burnrate is a personal finance analytics app that runs entirely on your laptop. 
 |-------|-----------|
 | Backend | Python 3.11+, FastAPI, SQLAlchemy, SQLite |
 | Frontend | React 18, TypeScript, Vite, styled-components |
-| Design | NeoPOP by CRED (@cred/neopop-web) |
-| PDF Processing | pikepdf, pdfplumber |
-| Auto-import | watchdog (folder watcher) |
 
 ## Quick Start
 
@@ -112,17 +110,7 @@ burnrate/
 ```
 
 ## Distribution
-
+TODO
 Potential approaches under consideration:
-
-- **Electron** — Package as a native desktop app with embedded Python backend. Self-contained, familiar to users.
-- **Docker** — Single `docker-compose up` for both frontend and backend. Easy for technical users.
-- **Tauri** — Lightweight native wrapper (Rust-based). Smaller bundle than Electron.
-- **PyInstaller + static build** — Bundle the Python backend as a standalone executable, serve the pre-built React frontend from it. No Node.js needed at runtime.
-- **Homebrew formula** — For macOS users: `brew install burnrate`.
-
-The recommended path is **PyInstaller + static build** for simplicity — a single binary that starts both the backend and serves the frontend, with zero dependencies for end users.
-
 ## License
-
-Private — not open source.
+Apache 2.0 Open Source

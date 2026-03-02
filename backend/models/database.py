@@ -6,8 +6,11 @@ from pathlib import Path
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker, declarative_base
 
-# Ensure data directory exists
-DATA_DIR = Path(__file__).resolve().parent.parent / "data"
+_env_data_dir = os.environ.get("BURNRATE_DATA_DIR")
+if _env_data_dir:
+    DATA_DIR = Path(_env_data_dir).expanduser()
+else:
+    DATA_DIR = Path(__file__).resolve().parent.parent / "data"
 DATA_DIR.mkdir(parents=True, exist_ok=True)
 
 DATABASE_URL = f"sqlite:///{DATA_DIR / 'tuesday.db'}"

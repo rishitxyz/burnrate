@@ -57,5 +57,6 @@ htmlcov/
 *.swp
 *~
 
-# Debug screenshots
-screenshots/
+# screenshots/
+screenshots/*.mjs
+docs/

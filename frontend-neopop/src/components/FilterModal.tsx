@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { ElevatedCard, InputField } from '@cred/neopop-web/lib/components';
+import { ElevatedCard } from '@cred/neopop-web/lib/components';
 import { Typography } from '@cred/neopop-web/lib/components';
 import { colorPalette, mainColors } from '@cred/neopop-web/lib/primitives';
 import { FontType, FontWeights } from '@cred/neopop-web/lib/components/Typography/types';
@@ -29,7 +29,7 @@ export function FilterModal({ open, onClose }: FilterModalProps) {
   const [localMax, setLocalMax] = useState('');
 
   useEffect(() => {
-    fetch('http://localhost:8000/api/categories/all')
+    fetch('/api/categories/all')
       .then((r) => r.json())
       .then((data: any[]) =>
         setAllCategories(data.map((c) => ({ slug: c.slug, name: c.name, color: c.color })))
@@ -38,7 +38,7 @@ export function FilterModal({ open, onClose }: FilterModalProps) {
   }, []);
 
   useEffect(() => {
-    fetch('http://localhost:8000/api/tags')
+    fetch('/api/tags')
       .then((r) => r.json())
       .then((data: any[]) => setAvailableTags(data))
       .catch(() => {});

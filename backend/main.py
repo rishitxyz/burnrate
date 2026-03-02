@@ -1,6 +1,7 @@
 """FastAPI entry point for burnrate credit card analytics backend."""
 
 import logging
+import os
 import sys
 from pathlib import Path
 
@@ -103,10 +104,17 @@ app.include_router(analytics.router, prefix="/api")
 app.include_router(categories.router, prefix="/api")
 app.include_router(tags.router, prefix="/api")
 
-# Mount static files for future React build
-static_dir = Path(__file__).resolve().parent.parent / "frontend" / "dist"
-if static_dir.exists():
-    app.mount("/", StaticFiles(directory=str(static_dir), html=True), name="static")
+_project_root_for_static = Path(__file__).resolve().parent.parent
+_static_candidates = [
+    os.environ.get("BURNRATE_STATIC_DIR", ""),
+    str(_project_root_for_static / "frontend-neopop" / "dist"),
+    str(_project_root_for_static / "frontend" / "dist"),
+]
+for _candidate in _static_candidates:
+    if _candidate and Path(_candidate).is_dir():
+        app.mount("/", StaticFiles(directory=_candidate, html=True), name="static")
+        logger.info("Serving static files from %s", _candidate)
+        break
 
 
 if __name__ == "__main__":
