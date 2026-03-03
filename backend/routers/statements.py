@@ -2,7 +2,6 @@
 
 import concurrent.futures
 import os
-import shutil
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 from uuid import uuid4
@@ -12,6 +11,7 @@ from sqlalchemy.orm import Session
 
 from backend.models.database import SessionLocal, get_db
 from backend.models.models import ProcessingLog, Statement, Transaction
+from backend.services import processing_queue
 from backend.services.statement_processor import process_statement
 
 router = APIRouter(prefix="/statements", tags=["statements"])
@@ -27,7 +27,7 @@ def upload_statement(
     password: Optional[str] = Form(None),
     db: Session = Depends(get_db),
 ) -> Dict[str, Any]:
-    """Accept PDF file upload with optional bank and password params."""
+    """Accept a single PDF file upload with optional bank and password params."""
     if not file.filename or not file.filename.lower().endswith(".pdf"):
         raise HTTPException(status_code=400, detail="PDF file required")
 
@@ -44,6 +44,63 @@ def upload_statement(
         manual_password=password,
     )
     return result
+
+
+@router.post("/upload-bulk")
+async def upload_bulk(
+    files: List[UploadFile] = File(...),
+    bank: Optional[str] = Form(None),
+    password: Optional[str] = Form(None),
+) -> Dict[str, Any]:
+    """Accept multiple PDF files. Files are queued and processed with
+    max 10 concurrently via the shared processing pool."""
+    saved: List[str] = []
+    skipped: List[str] = []
+
+    for f in files:
+        if not f.filename or not f.filename.lower().endswith(".pdf"):
+            skipped.append(f.filename or "<unknown>")
+            continue
+        safe_name = f"{uuid4().hex}_{f.filename}"
+        persistent_path = str(UPLOADS_DIR / safe_name)
+        content = await f.read()
+        with open(persistent_path, "wb") as out:
+            out.write(content)
+        saved.append(persistent_path)
+
+    if not saved:
+        raise HTTPException(status_code=400, detail="No valid PDF files provided")
+
+    bank_lower = bank.lower() if bank else None
+    futures = [
+        processing_queue.submit(
+            pdf_path=path,
+            bank=bank_lower,
+            manual_password=password,
+        )
+        for path in saved
+    ]
+
+    results = {
+        "total": len(saved), "success": 0, "failed": 0,
+        "duplicate": 0, "card_not_found": 0, "skipped": len(skipped),
+    }
+    for future in concurrent.futures.as_completed(futures):
+        try:
+            result = future.result()
+            status = result.get("status", "error")
+            if status == "success":
+                results["success"] += 1
+            elif status == "duplicate":
+                results["duplicate"] += 1
+            elif status == "card_not_found":
+                results["card_not_found"] += 1
+            else:
+                results["failed"] += 1
+        except Exception:
+            results["failed"] += 1
+
+    return {"status": "ok", **results}
 
 
 def _process_one_statement(file_path: str, bank: Optional[str]) -> Dict[str, Any]:
@@ -70,7 +127,6 @@ def reparse_all_statements(db: Session = Depends(get_db)) -> Dict[str, Any]:
         if not stmt.file_path or not os.path.isfile(stmt.file_path):
             results["skipped"] += 1
             continue
-        db.query(Transaction).filter(Transaction.statement_id == stmt.id).delete()
         db.delete(stmt)
     db.commit()
 
@@ -146,11 +202,10 @@ def acknowledge_log(log_id: str, db: Session = Depends(get_db)) -> Dict[str, str
 
 @router.delete("/{statement_id}")
 def delete_statement(statement_id: str, db: Session = Depends(get_db)) -> Dict[str, str]:
-    """Delete a statement and cascade to its transactions."""
+    """Delete a statement and cascade to its transactions and their tags."""
     stmt = db.query(Statement).filter(Statement.id == statement_id).first()
     if not stmt:
         raise HTTPException(status_code=404, detail="Statement not found")
-    db.query(Transaction).filter(Transaction.statement_id == statement_id).delete()
     db.delete(stmt)
     db.commit()
     return {"status": "ok", "message": "Statement and transactions deleted"}
@@ -172,7 +227,6 @@ def reparse_statement(statement_id: str, db: Session = Depends(get_db)) -> Dict[
         )
         raise HTTPException(status_code=400, detail=detail)
 
-    db.query(Transaction).filter(Transaction.statement_id == statement_id).delete()
     db.delete(stmt)
     db.commit()
 

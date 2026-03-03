@@ -9,7 +9,7 @@ import { TransactionRow } from '@/components/TransactionRow';
 import { FilterModal } from '@/components/FilterModal';
 import { useFilters } from '@/contexts/FilterContext';
 import { useAnalytics, useTransactions, useCards } from '@/hooks/useApi';
-import { uploadStatement, getStatementPeriods } from '@/lib/api';
+import { uploadStatement, uploadStatementsBulk, getStatementPeriods } from '@/lib/api';
 import { formatCurrency } from '@/lib/utils';
 import { toast } from '@/components/Toast';
 import { Button, Typography } from '@cred/neopop-web/lib/components';
@@ -328,6 +328,10 @@ function DashboardContent() {
         setTimeout(() => window.location.reload(), 1500);
       } else if (result.status === 'duplicate') {
         toast.info(result.message ?? 'Statement already imported');
+      } else if (result.status === 'card_not_found') {
+        toast.warning(
+          result.message ?? 'Statement belongs to a card that has not been added yet. Add the card in Settings to process it.'
+        );
       } else if (
         result.message?.toLowerCase().includes('unlock') ||
         result.message?.toLowerCase().includes('password')
@@ -342,6 +346,37 @@ function DashboardContent() {
       const message = err instanceof Error ? err.message : 'Upload failed';
       toast.error(message);
       return { status: 'error', message, count: 0 };
+    }
+  };
+
+  const handleBulkUpload = async (files: File[]) => {
+    const loadingId = toast.loading(`Processing ${files.length} statements...`);
+    try {
+      const result = await uploadStatementsBulk(files);
+      toast.dismiss(loadingId);
+
+      if (result.success > 0) {
+        toast.success(`${result.success} of ${result.total} statements imported`);
+        setTimeout(() => window.location.reload(), 1500);
+      }
+      if (result.card_not_found > 0) {
+        toast.warning(
+          `${result.card_not_found} statement(s) skipped — card not added yet. Add the card in Settings to process them.`
+        );
+      }
+      if (result.success === 0 && result.card_not_found === 0) {
+        if (result.duplicate > 0 && result.failed === 0) {
+          toast.info('All statements already imported');
+        } else if (result.failed > 0) {
+          toast.error(`${result.failed} of ${result.total} statements failed`);
+        }
+      }
+      return result;
+    } catch (err) {
+      toast.dismiss(loadingId);
+      const message = err instanceof Error ? err.message : 'Bulk upload failed';
+      toast.error(message);
+      return { status: 'error', total: files.length, success: 0, failed: files.length, duplicate: 0, skipped: 0 };
     }
   };
 
@@ -384,7 +419,7 @@ function DashboardContent() {
             </ClickableSpend>
           )}
           <div style={{ flex: 1, minWidth: 280 }}>
-            <StatUpload onUpload={handleUpload} compact />
+            <StatUpload onUpload={handleUpload} onBulkUpload={handleBulkUpload} compact />
           </div>
         </TopRow>
 

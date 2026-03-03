@@ -26,6 +26,7 @@ from backend.models.database import SessionLocal, init_db
 from backend.models.models import CategoryDefinition, Settings
 from backend.routers import analytics, cards, categories, settings, statements, tags, transactions
 from backend.routers.settings import get_watcher_observer, set_watcher_observer
+from backend.services import processing_queue
 from backend.services.folder_watcher import start_watcher, stop_watcher
 
 logger = logging.getLogger(__name__)
@@ -79,6 +80,7 @@ async def lifespan(app: FastAPI):
     if observer:
         stop_watcher(observer)
         set_watcher_observer(None)
+    processing_queue.shutdown(wait=True)
 
 
 app = FastAPI(title="Burnrate Credit Card Analytics", lifespan=lifespan)

@@ -13,9 +13,11 @@ from backend.models.database import SessionLocal
 from backend.models.models import Card, Statement, Settings, Transaction
 from backend.parsers.axis import AxisParser
 from backend.parsers.detector import detect_bank
+from backend.parsers.federal import FederalBankParser
 from backend.parsers.generic import GenericParser
 from backend.parsers.hdfc import HDFCParser
 from backend.parsers.icici import ICICIParser
+from backend.parsers.indian_bank import IndianBankParser
 from backend.services.categorizer import categorize
 from backend.services.pdf_unlock import generate_passwords, is_encrypted, unlock_pdf
 
@@ -25,11 +27,14 @@ PARSERS: Dict[str, Type] = {
     "hdfc": HDFCParser,
     "icici": ICICIParser,
     "axis": AxisParser,
+    "federal": FederalBankParser,
+    "indian_bank": IndianBankParser,
 }
 
 SUPPORTED_BANKS = [
     "hdfc", "icici", "axis", "sbi", "amex", "idfc_first",
     "indusind", "kotak", "sc", "yes", "au", "rbl",
+    "federal", "indian_bank",
 ]
 
 
@@ -197,12 +202,22 @@ def process_statement(
             if card:
                 card_id = card.id
             else:
-                # Auto-register card discovered from statement
-                card = Card(bank=bank, last4=card_last4)
-                db_session.add(card)
-                db_session.flush()
-                card_id = card.id
-                logger.info("Auto-registered card %s %s", bank, card_last4)
+                logger.warning(
+                    "Skipping statement — card %s ...%s is not registered",
+                    bank, card_last4,
+                )
+                return {
+                    "status": "card_not_found",
+                    "message": (
+                        f"Statement belongs to {bank.upper()} card ending "
+                        f"...{card_last4} which has not been added yet. "
+                        f"Add this card in Settings to process these statements."
+                    ),
+                    "count": 0,
+                    "period": None,
+                    "bank": bank,
+                    "card_last4": card_last4,
+                }
         else:
             cards = db_session.query(Card).filter(Card.bank == bank).all()
             if len(cards) == 1:

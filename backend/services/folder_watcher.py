@@ -1,6 +1,14 @@
-"""Folder watcher for auto-importing new statement PDFs."""
+"""Folder watcher for auto-importing new statement PDFs.
+
+Uses the shared processing_queue so that at most 10 files are
+parsed concurrently, regardless of how many arrive at once.
+On startup, performs an initial scan of existing PDFs so that
+files placed in the watch folder before the server starts are
+also processed.
+"""
 
 import logging
+import threading
 import time
 from pathlib import Path
 from typing import Callable, Optional
@@ -8,7 +16,7 @@ from typing import Callable, Optional
 from watchdog.events import FileSystemEventHandler
 from watchdog.observers import Observer
 
-from backend.services.statement_processor import process_statement
+from backend.services import processing_queue
 
 logger = logging.getLogger(__name__)
 
@@ -64,24 +72,37 @@ class StatementWatchHandler(FileSystemEventHandler):
         super().__init__()
         self.db_session_factory = db_session_factory
 
-    def _process_pdf(self, path: Path):
-        """Wait for file to stabilize then process it."""
+    def _enqueue_pdf(self, path: Path, *, wait_for_stable: bool = True):
+        """Submit a PDF to the processing queue.
+
+        Args:
+            wait_for_stable: When True (the default, used for live
+                filesystem events), block until the file size stops
+                changing.  Set to False for the initial scan where
+                files are already fully written.
+        """
         logger.info("Detected new PDF: %s", path.name)
 
-        if not _wait_for_file_stable(path):
+        if wait_for_stable and not _wait_for_file_stable(path):
             logger.warning("File %s did not stabilize within timeout, processing anyway", path.name)
 
+        future = processing_queue.submit(
+            pdf_path=str(path),
+            db_session_factory=self.db_session_factory,
+        )
+        future.add_done_callback(
+            lambda f: self._on_done(path.name, f)
+        )
+
+    def _on_done(self, file_name: str, future):
         try:
-            result = process_statement(
-                pdf_path=str(path),
-                db_session_factory=self.db_session_factory,
-            )
-            logger.info("Processed %s: %s", path.name, result)
-            _log_processing_result(self.db_session_factory, path.name, result)
+            result = future.result()
+            logger.info("Processed %s: %s", file_name, result)
+            _log_processing_result(self.db_session_factory, file_name, result)
         except Exception as e:
-            logger.exception("Failed to process %s: %s", path.name, e)
+            logger.exception("Failed to process %s: %s", file_name, e)
             _log_processing_result(
-                self.db_session_factory, path.name,
+                self.db_session_factory, file_name,
                 {"status": "error", "message": str(e), "count": 0},
             )
 
@@ -98,14 +119,14 @@ class StatementWatchHandler(FileSystemEventHandler):
             return
         path = Path(event.src_path)
         if self._should_process(path):
-            self._process_pdf(path)
+            self._enqueue_pdf(path)
 
     def on_moved(self, event):
         if event.is_directory:
             return
         path = Path(event.dest_path)
         if self._should_process(path):
-            self._process_pdf(path)
+            self._enqueue_pdf(path)
 
 
 def _resolve_true_case(path: Path) -> Path:
@@ -130,6 +151,28 @@ def _resolve_true_case(path: Path) -> Path:
     return resolved
 
 
+def _initial_scan(watch_dir: Path, handler: StatementWatchHandler) -> None:
+    """Scan the watch directory for existing PDFs and enqueue any that
+    haven't been imported yet.  Deduplication happens inside
+    ``process_statement`` via file-hash, so it's safe to submit
+    everything — already-imported files will be skipped cheaply."""
+    pdfs = sorted(watch_dir.rglob("*.pdf"))
+    if not pdfs:
+        return
+
+    eligible = [p for p in pdfs if handler._should_process(p)]
+    if not eligible:
+        return
+
+    logger.info(
+        "Initial scan: found %d PDF(s) in %s — submitting for processing",
+        len(eligible),
+        watch_dir,
+    )
+    for pdf_path in eligible:
+        handler._enqueue_pdf(pdf_path, wait_for_stable=False)
+
+
 def start_watcher(watch_path: str, db_session_factory: Callable) -> Optional[Observer]:
     """Create Observer, schedule handler, start. Returns observer for cleanup."""
     path = Path(watch_path).expanduser().resolve()
@@ -140,9 +183,17 @@ def start_watcher(watch_path: str, db_session_factory: Callable) -> Optional[Obs
 
     handler = StatementWatchHandler(db_session_factory)
     observer = Observer()
-    observer.schedule(handler, str(path), recursive=False)
+    observer.schedule(handler, str(path), recursive=True)
     observer.start()
-    logger.info("Started folder watcher on %s", path)
+    logger.info("Started folder watcher on %s (recursive)", path)
+
+    threading.Thread(
+        target=_initial_scan,
+        args=(path, handler),
+        name="initial-scan",
+        daemon=True,
+    ).start()
+
     return observer
 
 

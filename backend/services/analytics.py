@@ -173,7 +173,7 @@ def get_category_breakdown(
     q = _apply_filters(q, card_ids, categories, direction, amount_min, amount_max, tags)
     rows = q.group_by(Transaction.category).all()
 
-    total_decimal = sum(Decimal(str(r.amount or 0)) for r in rows)
+    total_decimal = sum((Decimal(str(r.amount or 0)) for r in rows), Decimal(0))
     total_float = float(total_decimal.quantize(Decimal("0.01"), rounding=ROUND_HALF_UP))
     categories = [
         {

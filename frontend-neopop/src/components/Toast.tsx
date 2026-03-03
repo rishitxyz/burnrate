@@ -23,6 +23,14 @@ export const toast = {
       colorConfig: { background: mainColors.red, color: mainColors.white },
     });
   },
+  warning: (message: string, _duration?: number) => {
+    neoShowToast(message, {
+      type: 'warning',
+      dismissOnClick: true,
+      autoCloseTime: _duration ?? 6000,
+      colorConfig: { background: '#E5A100', color: mainColors.white },
+    });
+  },
   info: (message: string, _duration?: number) => {
     neoShowToast(message, {
       type: 'warning',

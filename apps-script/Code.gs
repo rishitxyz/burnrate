@@ -25,6 +25,8 @@ const BANK_CONFIGS = [
   { name: 'YES', domains: ['@yesbank.in'] },
   { name: 'AU', domains: ['@aubank.in'] },
   { name: 'RBL', domains: ['@rblbank.com'] },
+  { name: 'Federal', domains: ['@federalbank.co.in'] },
+  { name: 'Indian_Bank', domains: ['@indianbank.co.in', '@indianbank.net.in'] },
 ];
 
 const ROOT_FOLDER_NAME = 'Statements';

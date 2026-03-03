@@ -6,7 +6,7 @@ from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 
 from backend.models.database import get_db
-from backend.models.models import Card, Statement, Transaction
+from backend.models.models import Card, Statement, Transaction, TransactionTag
 
 router = APIRouter(prefix="/cards", tags=["cards"])
 
@@ -33,10 +33,17 @@ def delete_card(card_id: str, db: Session = Depends(get_db)) -> Dict[str, str]:
     if not card:
         raise HTTPException(status_code=404, detail="Card not found")
 
-    db.query(Transaction).filter(Transaction.card_id == card_id).delete()
+    txn_ids = [
+        t.id for t in db.query(Transaction.id).filter(Transaction.card_id == card_id).all()
+    ]
+    if txn_ids:
+        db.query(TransactionTag).filter(TransactionTag.transaction_id.in_(txn_ids)).delete(
+            synchronize_session=False
+        )
+    db.query(Transaction).filter(Transaction.card_id == card_id).delete(synchronize_session=False)
     db.query(Statement).filter(
         Statement.card_last4 == card.last4, Statement.bank == card.bank
-    ).delete()
+    ).delete(synchronize_session=False)
     db.delete(card)
     db.commit()
 

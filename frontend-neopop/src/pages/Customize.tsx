@@ -163,7 +163,7 @@ const inputStyle = {
   colorScheme: 'dark' as const,
 };
 
-function DefineTagsModal({ open, onClose }: { open: boolean; onClose: () => void }) {
+export function DefineTagsModal({ open, onClose }: { open: boolean; onClose: () => void }) {
   const [tags, setTags] = useState<TagDefinitionResponse[]>([]);
   const [loading, setLoading] = useState(false);
   const [newTagName, setNewTagName] = useState('');
@@ -318,7 +318,7 @@ function DefineTagsModal({ open, onClose }: { open: boolean; onClose: () => void
   );
 }
 
-function ReparseRemoveModal({ open, onClose }: { open: boolean; onClose: () => void }) {
+export function ReparseRemoveModal({ open, onClose }: { open: boolean; onClose: () => void }) {
   const [statements, setStatements] = useState<Statement[]>([]);
   const [loading, setLoading] = useState(false);
   const [actioning, setActioning] = useState<string | null>(null);
@@ -664,7 +664,7 @@ function ColorPickerButton({
   );
 }
 
-function DefineCategoriesModal({ open, onClose }: { open: boolean; onClose: () => void }) {
+export function DefineCategoriesModal({ open, onClose }: { open: boolean; onClose: () => void }) {
   const [categories, setCategories] = useState<CategoryResponse[]>([]);
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);

@@ -60,3 +60,10 @@ htmlcov/
 # screenshots/
 screenshots/*.mjs
 docs/
+
+video/
+screenshots/
+reddit-post.md
+*.db-wal
+*.db-shm
+*.db-journal

@@ -178,6 +178,38 @@ export async function uploadStatement(
   return data;
 }
 
+export interface BulkUploadResult {
+  status: string;
+  total: number;
+  success: number;
+  failed: number;
+  duplicate: number;
+  card_not_found: number;
+  skipped: number;
+}
+
+export async function uploadStatementsBulk(
+  files: File[],
+  bank?: Bank,
+  password?: string
+): Promise<BulkUploadResult> {
+  const formData = new FormData();
+  for (const file of files) {
+    formData.append('files', file);
+  }
+  if (bank) formData.append('bank', bank);
+  if (password) formData.append('password', password);
+  const { data } = await api.post<BulkUploadResult>(
+    '/statements/upload-bulk',
+    formData,
+    {
+      headers: { 'Content-Type': 'multipart/form-data' },
+      timeout: 300000,
+    }
+  );
+  return data;
+}
+
 interface StatementRaw {
   id: string;
   bank: string;

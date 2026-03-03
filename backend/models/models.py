@@ -12,6 +12,7 @@ from sqlalchemy import (
     Integer,
     String,
     Text,
+    UniqueConstraint,
 )
 from sqlalchemy.orm import relationship
 
@@ -42,6 +43,9 @@ class Card(Base):
     """Credit card metadata."""
 
     __tablename__ = "cards"
+    __table_args__ = (
+        UniqueConstraint("bank", "last4", name="uq_card_bank_last4"),
+    )
 
     id = Column(String(36), primary_key=True, default=generate_uuid)
     bank = Column(String(50), nullable=False)  # 'hdfc', 'icici', 'axis'
@@ -68,7 +72,7 @@ class Statement(Base):
     credit_limit = Column(Float, nullable=True)
     imported_at = Column(DateTime, default=datetime.utcnow)
 
-    transactions = relationship("Transaction", back_populates="statement")
+    transactions = relationship("Transaction", back_populates="statement", cascade="all, delete-orphan")
 
 
 class Transaction(Base):
@@ -77,7 +81,7 @@ class Transaction(Base):
     __tablename__ = "transactions"
 
     id = Column(String(36), primary_key=True, default=generate_uuid)
-    statement_id = Column(String(36), ForeignKey("statements.id"), nullable=False)
+    statement_id = Column(String(36), ForeignKey("statements.id", ondelete="CASCADE"), nullable=False)
     date = Column(Date, nullable=False)
     merchant = Column(String(512), nullable=False)
     amount = Column(Float, nullable=False)

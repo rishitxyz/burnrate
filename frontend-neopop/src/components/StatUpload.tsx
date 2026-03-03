@@ -1,6 +1,6 @@
 import { useCallback, useRef, useState } from 'react';
 import { useDropzone } from 'react-dropzone';
-import { Upload, CheckCircle2, AlertCircle, Loader2, Lock } from 'lucide-react';
+import { Upload, CheckCircle2, AlertCircle, Loader2, Lock, Files } from 'lucide-react';
 import { Button, Typography, InputField } from '@cred/neopop-web/lib/components';
 import { FontType, FontWeights } from '@cred/neopop-web/lib/components/Typography/types';
 import { colorPalette, mainColors } from '@cred/neopop-web/lib/primitives';
@@ -14,13 +14,23 @@ export interface UploadResult {
   bank?: string;
 }
 
+export interface BulkUploadResult {
+  status: string;
+  total: number;
+  success: number;
+  failed: number;
+  duplicate: number;
+  skipped: number;
+}
+
 interface StatUploadProps {
   onUpload?: (file: File, password?: string) => Promise<UploadResult>;
+  onBulkUpload?: (files: File[]) => Promise<BulkUploadResult>;
   className?: string;
   compact?: boolean;
 }
 
-export function StatUpload({ onUpload, className, compact = false }: StatUploadProps) {
+export function StatUpload({ onUpload, onBulkUpload, className, compact = false }: StatUploadProps) {
   const [status, setStatus] = useState<UploadStatus>('idle');
   const [fileName, setFileName] = useState<string>('');
   const [resultMessage, setResultMessage] = useState<string>('');
@@ -71,15 +81,58 @@ export function StatUpload({ onUpload, className, compact = false }: StatUploadP
     [onUpload]
   );
 
+  const doBulkUpload = useCallback(
+    async (files: File[]) => {
+      if (!onBulkUpload) return;
+      setStatus('uploading');
+      setResultMessage('');
+      setFileName(`${files.length} files`);
+
+      try {
+        const result = await onBulkUpload(files);
+        const parts: string[] = [];
+        if (result.success > 0) parts.push(`${result.success} imported`);
+        if (result.duplicate > 0) parts.push(`${result.duplicate} duplicates`);
+        if (result.failed > 0) parts.push(`${result.failed} failed`);
+        if (result.skipped > 0) parts.push(`${result.skipped} skipped`);
+
+        if (result.success > 0) {
+          setStatus('success');
+          setResultMessage(parts.join(', '));
+          setTimeout(() => setStatus('idle'), 5000);
+        } else if (result.duplicate > 0 && result.failed === 0) {
+          setStatus('error');
+          setResultMessage('All statements already imported');
+          setTimeout(() => setStatus('idle'), 4000);
+        } else {
+          setStatus('error');
+          setResultMessage(parts.join(', ') || 'Processing failed');
+          setTimeout(() => setStatus('idle'), 5000);
+        }
+      } catch {
+        setStatus('error');
+        setResultMessage('Bulk upload failed — check backend connection');
+        setTimeout(() => setStatus('idle'), 5000);
+      }
+    },
+    [onBulkUpload]
+  );
+
   const onDrop = useCallback(
     (accepted: File[]) => {
       if (accepted.length === 0) return;
-      const file = accepted[0];
-      setFileName(file.name);
       setPassword('');
-      doUpload(file);
+      pendingFile.current = null;
+
+      if (accepted.length > 1 && onBulkUpload) {
+        doBulkUpload(accepted);
+      } else {
+        const file = accepted[0];
+        setFileName(file.name);
+        doUpload(file);
+      }
     },
-    [doUpload]
+    [doUpload, doBulkUpload, onBulkUpload]
   );
 
   const handlePasswordRetry = useCallback(() => {
@@ -91,7 +144,7 @@ export function StatUpload({ onUpload, className, compact = false }: StatUploadP
   const { getRootProps, getInputProps, isDragActive } = useDropzone({
     onDrop,
     accept: { 'application/pdf': ['.pdf'] },
-    maxFiles: 1,
+    multiple: true,
     disabled: status === 'uploading' || status === 'password_needed',
   });
 
@@ -156,8 +209,10 @@ export function StatUpload({ onUpload, className, compact = false }: StatUploadP
 
   const statusConfig = {
     idle: {
-      icon: Upload,
-      text: compact ? 'Drop Statement PDF' : 'Drop your statement PDF here, or click to browse',
+      icon: onBulkUpload ? Files : Upload,
+      text: compact
+        ? 'Drop Statement PDFs'
+        : 'Drop your statement PDFs here, or click to browse',
       color: 'rgba(255,255,255,0.6)',
     },
     uploading: {
@@ -217,8 +272,10 @@ export function StatUpload({ onUpload, className, compact = false }: StatUploadP
       <Typography fontType={FontType.BODY} fontSize={14} fontWeight={FontWeights.MEDIUM} color={current.color} style={{ margin: 0 }}>
         {current.text}
       </Typography>
-      {!compact && status === 'idle' && (
-        <Typography fontType={FontType.BODY} fontSize={12} fontWeight={FontWeights.REGULAR} color="rgba(255,255,255,0.4)" style={{ marginTop: 4 }}>PDF files only</Typography>
+      {status === 'idle' && onBulkUpload && (
+        <Typography fontType={FontType.BODY} fontSize={compact ? 11 : 12} fontWeight={FontWeights.REGULAR} color="rgba(255,255,255,0.4)" style={{ marginTop: 4 }}>
+          {compact ? 'drop multiple files for bulk import' : 'PDF files only — drop multiple files for bulk import'}
+        </Typography>
       )}
       <style>{`@keyframes spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }`}</style>
     </div>

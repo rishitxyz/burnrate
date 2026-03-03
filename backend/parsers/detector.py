@@ -11,7 +11,8 @@ def detect_bank(pdf_path: str) -> Optional[str]:
     """
     Detect which bank a statement PDF belongs to.
     Returns one of: 'hdfc', 'icici', 'axis', 'sbi', 'amex', 'idfc_first',
-    'indusind', 'kotak', 'sc', 'yes', 'au', 'rbl', or None.
+    'indusind', 'kotak', 'sc', 'yes', 'au', 'rbl', 'federal', 'indian_bank',
+    or None.
     """
     # Check filename for bank name patterns (case-insensitive)
     filename = os.path.basename(pdf_path).lower()
@@ -39,6 +40,10 @@ def detect_bank(pdf_path: str) -> Optional[str]:
         return "au"
     if "rbl bank" in filename or "rbl" in filename:
         return "rbl"
+    if "federal" in filename or "federalbank" in filename:
+        return "federal"
+    if "indian bank" in filename or "indianbank" in filename or "indian_bank" in filename:
+        return "indian_bank"
 
     # Try card BIN prefixes from masked card numbers in filename (e.g. 5522XXXXXXXXXX87)
     bin_match = re.search(r"(\d{4})[xX*]+\d{2,4}", filename)
@@ -90,5 +95,9 @@ def detect_bank(pdf_path: str) -> Optional[str]:
         return "au"
     if "rbl bank" in text_lower or re.search(r"\brbl\b", text_lower):
         return "rbl"
+    if "federal bank" in text_lower or re.search(r"\bfederal\s*bank\b", text_lower):
+        return "federal"
+    if "indian bank" in text_lower and "south indian bank" not in text_lower:
+        return "indian_bank"
 
     return None

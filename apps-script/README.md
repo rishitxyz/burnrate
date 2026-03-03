@@ -2,7 +2,7 @@
 
 This Google Apps Script automatically downloads credit card statement PDFs from Gmail into an organized Google Drive folder structure. When combined with Google Drive Desktop sync and Burnrate’s folder watcher, statements are imported into the app automatically.
 
-## Supported Banks (12)
+## Supported Banks (14)
 
 | Bank | Email Domains |
 |------|---------------|
@@ -18,6 +18,8 @@ This Google Apps Script automatically downloads credit card statement PDFs from 
 | YES Bank | @yesbank.in |
 | AU Small Finance Bank | @aubank.in |
 | RBL Bank | @rblbank.com |
+| Federal Bank | @federalbank.co.in |
+| Indian Bank | @indianbank.co.in, @indianbank.net.in |
 
 Statements are matched by subject containing “statement” or “e-statement” and must have PDF attachments.
 

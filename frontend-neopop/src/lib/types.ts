@@ -1,4 +1,4 @@
-export type Bank = 'hdfc' | 'icici' | 'axis' | 'sbi' | 'amex' | 'idfc_first' | 'indusind' | 'kotak' | 'sc' | 'yes' | 'au' | 'rbl';
+export type Bank = 'hdfc' | 'icici' | 'axis' | 'sbi' | 'amex' | 'idfc_first' | 'indusind' | 'kotak' | 'sc' | 'yes' | 'au' | 'rbl' | 'federal' | 'indian_bank';
 
 export type Category = string;
 
@@ -64,6 +64,8 @@ export const BANK_CONFIG: Record<Bank, { name: string; color: string; logo: stri
   yes: { name: 'YES Bank', color: '#0061A8', logo: 'Y' },
   au: { name: 'AU Small Finance Bank', color: '#EC6608', logo: 'A' },
   rbl: { name: 'RBL Bank', color: '#21409A', logo: 'R' },
+  federal: { name: 'Federal Bank', color: '#0066B3', logo: 'F' },
+  indian_bank: { name: 'Indian Bank', color: '#2B2D8E', logo: 'I' },
 };
 
 export const CATEGORY_COLORS: Record<Category, string> = {

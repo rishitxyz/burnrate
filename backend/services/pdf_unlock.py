@@ -80,6 +80,43 @@ def generate_passwords(
         # lowercase
         _add(name4.lower() + ddmm)
 
+    elif bank.lower() == "federal":
+        # Federal Bank: typically NAME4 + DDMM or DDMMYYYY or card last4
+        n4u = name4.upper()
+        n4l = name4.lower()
+        fnu = first_name.upper()
+        fnl = first_name.lower()
+        _add(n4u + ddmm)
+        _add(fnu + ddmm)
+        _add(n4u + ddmmyyyy)
+        _add(fnu + ddmmyyyy)
+        _add(n4l + ddmm)
+        _add(fnl + ddmm)
+        _add(ddmmyyyy)
+        _add(ddmmyy)
+        for last4 in card_last4s or []:
+            if last4 and len(str(last4)) >= 4:
+                _add(n4u + str(last4)[-4:])
+                _add(n4l + str(last4)[-4:])
+
+    elif bank.lower() == "indian_bank":
+        # Indian Bank: First 4 letters of name (UPPERCASE) + DOB as DDMM
+        n4u = name4.upper()
+        fnu = first_name.upper()
+        _add(n4u + ddmm)
+        _add(fnu + ddmm)
+        _add(n4u + ddmmyyyy)
+        _add(fnu + ddmmyyyy)
+        _add(n4u + ddmmyy)
+        _add(fnu + ddmmyy)
+        _add(ddmmyyyy)
+        # lowercase variants
+        _add(name4.lower() + ddmm)
+        _add(first_name.lower() + ddmm)
+        for last4 in card_last4s or []:
+            if last4 and len(str(last4)) >= 4:
+                _add(n4u + str(last4)[-4:])
+
     else:
         # Generic password patterns for other banks
         n4u = name4.upper()

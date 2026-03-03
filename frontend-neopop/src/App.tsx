@@ -45,6 +45,10 @@ function ProcessingLogWatcher() {
         );
       } else if (log.status === 'duplicate') {
         toast.info(`${log.fileName} was already imported`);
+      } else if (log.status === 'card_not_found') {
+        toast.warning(
+          log.message ?? `${log.fileName} belongs to a card that has not been added yet. Add the card to process it.`,
+        );
       } else {
         toast.error(
           `Failed to process ${log.fileName}: ${log.message || 'Unknown error'}`,
