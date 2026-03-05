@@ -11,6 +11,7 @@ AppPublisher=Pratik Prakash
 AppPublisherURL=https://github.com/pratik1235/burnrate
 DefaultDirName={autopf}\Burnrate
 DefaultGroupName=Burnrate
+SourceDir=..
 OutputDir=dist
 OutputBaseFilename=Burnrate-Setup
 Compression=lzma2
