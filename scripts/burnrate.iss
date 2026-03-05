@@ -6,7 +6,7 @@
 
 [Setup]
 AppName=Burnrate
-AppVersion=1.0.0
+AppVersion=0.2.0
 AppPublisher=Pratik Prakash
 AppPublisherURL=https://github.com/pratik1235/burnrate
 DefaultDirName={autopf}\Burnrate
