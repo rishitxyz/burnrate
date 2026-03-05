@@ -69,3 +69,10 @@ reddit-post.md
 tests/fixtures/
 assets/
 screenshots/
+
+# Tauri build artifacts
+src-tauri/target/
+src-tauri/binaries/
+
+# PyInstaller spec files
+*.spec

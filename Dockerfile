@@ -8,7 +8,7 @@
 FROM node:20-alpine AS frontend-builder
 WORKDIR /build
 COPY frontend-neopop/package*.json ./
-RUN npm ci --omit=dev
+RUN npm ci
 COPY frontend-neopop/ ./
 RUN npm run build
 
