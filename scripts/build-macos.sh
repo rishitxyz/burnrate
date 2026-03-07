@@ -1,24 +1,50 @@
 #!/usr/bin/env bash
 # =============================================================================
-# Burnrate — macOS native build script (PyInstaller fallback)
-# For the recommended Tauri-based approach, see docs/macos-native.md
-# Produces: dist/Burnrate.app (and optionally Burnrate.dmg)
+# Burnrate — macOS native build (Tauri + PyInstaller sidecar)
+# Produces: src-tauri/target/release/bundle/dmg/Burnrate_<version>_<arch>.dmg
+#           src-tauri/target/release/bundle/macos/Burnrate.app
 # =============================================================================
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 cd "$ROOT"
 
-echo "==> Building React frontend..."
-(cd frontend-neopop && npm ci --omit=dev && npm run build)
+# ---- Pre-flight checks ----
+for cmd in node npm python3 rustc cargo; do
+  if ! command -v "$cmd" &>/dev/null; then
+    echo "ERROR: $cmd is not installed." >&2
+    exit 1
+  fi
+done
 
-echo "==> Building macOS app with PyInstaller..."
+TRIPLE=$(rustc -vV | grep host | awk '{print $2}')
+echo "==> Build target: ${TRIPLE}"
+echo ""
+
+# ---- Step 1: Frontend ----
+echo "==> [1/5] Building React frontend..."
+(cd frontend-neopop && npm ci && npm run build)
+echo ""
+
+# ---- Step 2: Python sidecar ----
+echo "==> [2/5] Building Python sidecar with PyInstaller..."
+
+VENV_DIR="${ROOT}/.venv-build"
+if [ ! -d "$VENV_DIR" ]; then
+  echo "    Creating build virtualenv..."
+  python3 -m venv "$VENV_DIR"
+fi
+# shellcheck disable=SC1091
+source "$VENV_DIR/bin/activate"
+
+pip install --quiet --upgrade pip
+pip install --quiet pyinstaller
+pip install --quiet -r requirements.txt
+
 python -m PyInstaller \
-    --name Burnrate \
-    --windowed \
-    --onedir \
+    --name burnrate-server \
+    --onefile \
     --noconfirm \
-    --add-data "frontend-neopop/dist:static" \
     --hidden-import uvicorn.logging \
     --hidden-import uvicorn.loops \
     --hidden-import uvicorn.loops.auto \
@@ -43,23 +69,61 @@ python -m PyInstaller \
     --hidden-import backend.routers.statements \
     --hidden-import backend.routers.tags \
     --hidden-import backend.routers.transactions \
-    --icon scripts/icon.icns 2>/dev/null || true \
+    --collect-all pdfplumber \
     scripts/launch.py
 
-# Ad-hoc code sign (allows running without Apple Developer ID)
-echo "==> Ad-hoc signing..."
-codesign -s - --force --deep "dist/Burnrate.app" 2>/dev/null || true
+mkdir -p src-tauri/binaries
+cp "dist/burnrate-server" "src-tauri/binaries/burnrate-server-${TRIPLE}"
+echo ""
 
-echo "==> Build complete: dist/Burnrate.app"
-
-# Optionally create DMG
-if command -v hdiutil &>/dev/null; then
-    echo "==> Creating DMG..."
-    hdiutil create \
-        -volname "Burnrate" \
-        -srcfolder "dist/Burnrate.app" \
-        -ov \
-        -format UDZO \
-        "dist/Burnrate.dmg"
-    echo "==> DMG created: dist/Burnrate.dmg"
+# ---- Step 3: Icons ----
+echo "==> [3/5] Generating app icons..."
+if [ -f scripts/generate-icons.sh ]; then
+  bash scripts/generate-icons.sh
+else
+  echo "    Icon script not found, using existing icons"
 fi
+echo ""
+
+# ---- Step 4: Tauri CLI ----
+echo "==> [4/5] Ensuring Tauri CLI is installed..."
+if ! command -v cargo-tauri &>/dev/null; then
+  cargo install tauri-cli --version "^2"
+fi
+echo ""
+
+# ---- Step 5: Build Tauri app ----
+echo "==> [5/5] Building Tauri native app..."
+CI=false cargo tauri build
+echo ""
+
+# ---- Sign ----
+APP_PATH=$(find src-tauri/target/release/bundle/macos -name "*.app" -type d 2>/dev/null | head -1)
+if [ -n "$APP_PATH" ]; then
+  echo "==> Signing ${APP_PATH}..."
+  codesign --force --deep --sign - "$APP_PATH"
+  xattr -cr "$APP_PATH" 2>/dev/null || true
+fi
+
+DMG_PATH=$(find src-tauri/target/release/bundle/dmg -name "*.dmg" 2>/dev/null | head -1)
+if [ -n "$DMG_PATH" ]; then
+  echo "==> Signing ${DMG_PATH}..."
+  codesign --force --sign - "$DMG_PATH"
+fi
+
+# ---- Done ----
+echo ""
+echo "============================================"
+echo "  Build complete!"
+echo "============================================"
+if [ -n "$APP_PATH" ]; then
+  echo "  App:  ${APP_PATH}"
+fi
+if [ -n "$DMG_PATH" ]; then
+  echo "  DMG:  ${DMG_PATH}"
+fi
+echo ""
+echo "  To install: open the DMG and drag Burnrate to Applications."
+echo "  If macOS says the app is damaged, run:"
+echo "    xattr -cr /Applications/Burnrate.app"
+echo "============================================"

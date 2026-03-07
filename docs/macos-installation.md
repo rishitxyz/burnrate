@@ -2,7 +2,12 @@
 
 ## Download
 
-Download `Burnrate_<version>_aarch64.dmg` from the [latest GitHub release](https://github.com/pratik1235/burnrate/releases/latest).
+Download the DMG for your Mac from the [latest GitHub release](https://github.com/pratik1235/burnrate/releases/latest):
+
+| Mac | File |
+|-----|------|
+| Apple Silicon (M1/M2/M3/M4) | `Burnrate_aarch64.dmg` |
+| Intel | `Burnrate_x86_64.dmg` |
 
 ## Install
 
@@ -12,21 +17,20 @@ Download `Burnrate_<version>_aarch64.dmg` from the [latest GitHub release](https
 
 ## First Launch
 
-Since the app is not signed with an Apple Developer ID, macOS Gatekeeper will block it on first launch.
+Since the app is ad-hoc signed (not with an Apple Developer ID certificate), macOS Gatekeeper may show one of these messages:
 
-**To bypass Gatekeeper:**
+- **"Burnrate is damaged and can't be opened"**
+- **"Burnrate can't be opened because Apple cannot check it for malicious software"**
 
-1. Right-click (or Control-click) on **Burnrate** in Applications
-2. Select **Open** from the context menu
-3. Click **Open** in the confirmation dialog
-
-You only need to do this once. Subsequent launches work normally.
-
-Alternatively, run this in Terminal:
+**Fix (recommended):** Open Terminal and run:
 
 ```bash
 xattr -cr /Applications/Burnrate.app
 ```
+
+Then open the app normally. This only needs to be done once.
+
+**Alternative:** Right-click (or Control-click) on **Burnrate** in Applications, select **Open**, and click **Open** in the confirmation dialog.
 
 ## Usage
 

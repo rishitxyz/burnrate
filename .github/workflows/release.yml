@@ -48,10 +48,19 @@ jobs:
           cache-from: type=gha
           cache-to: type=gha,mode=max
 
+      - name: Update Docker Hub description
+        uses: peter-evans/dockerhub-description@v4
+        with:
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+          repository: ${{ secrets.DOCKERHUB_USERNAME }}/burnrate
+          short-description: "Privacy-first, local-only credit card spend analytics. No cloud, no tracking."
+          readme-filepath: ./DOCKERHUB.md
+
   # ------------------------------------------------------------------
-  # macOS: Tauri app → .dmg
+  # macOS ARM (Apple Silicon): Tauri app → .dmg
   # ------------------------------------------------------------------
-  build-macos:
+  build-macos-arm:
     runs-on: macos-latest
     steps:
       - uses: actions/checkout@v4
@@ -81,6 +90,10 @@ jobs:
       - name: Build frontend
         working-directory: frontend-neopop
         run: npm run build
+
+      - name: Generate app icons from SVG
+        run: |
+          bash scripts/generate-icons.sh
 
       - name: Build Python sidecar
         run: |
@@ -124,10 +137,124 @@ jobs:
       - name: Build Tauri app
         run: CI=false cargo tauri build
 
+      - name: Sign the .app bundle
+        run: |
+          APP_PATH=$(find src-tauri/target/release/bundle -name "*.app" -type d | head -1)
+          if [ -n "$APP_PATH" ]; then
+            codesign --force --deep --sign - "$APP_PATH"
+          fi
+
+      - name: Sign the .dmg
+        run: |
+          DMG_PATH=$(find src-tauri/target/release/bundle/dmg -name "*.dmg" | head -1)
+          if [ -n "$DMG_PATH" ]; then
+            codesign --force --sign - "$DMG_PATH"
+          fi
+
       - name: Upload .dmg artifact
         uses: actions/upload-artifact@v4
         with:
-          name: Burnrate-macOS
+          name: Burnrate-macOS-arm64
+          path: src-tauri/target/release/bundle/dmg/*.dmg
+
+  # ------------------------------------------------------------------
+  # macOS Intel (x86_64): Tauri app → .dmg
+  # ------------------------------------------------------------------
+  build-macos-intel:
+    runs-on: macos-13
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+          cache-dependency-path: frontend-neopop/package-lock.json
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Install Python dependencies
+        run: pip install -r requirements.txt pyinstaller
+
+      - name: Install frontend dependencies
+        working-directory: frontend-neopop
+        run: npm ci
+
+      - name: Build frontend
+        working-directory: frontend-neopop
+        run: npm run build
+
+      - name: Generate app icons from SVG
+        run: |
+          bash scripts/generate-icons.sh
+
+      - name: Build Python sidecar
+        run: |
+          TRIPLE=$(rustc -vV | grep host | awk '{print $2}')
+          pyinstaller \
+            --name burnrate-server \
+            --onefile \
+            --noconfirm \
+            --hidden-import uvicorn.logging \
+            --hidden-import uvicorn.loops \
+            --hidden-import uvicorn.loops.auto \
+            --hidden-import uvicorn.protocols \
+            --hidden-import uvicorn.protocols.http \
+            --hidden-import uvicorn.protocols.http.auto \
+            --hidden-import uvicorn.protocols.websockets \
+            --hidden-import uvicorn.protocols.websockets.auto \
+            --hidden-import uvicorn.lifespan \
+            --hidden-import uvicorn.lifespan.on \
+            --hidden-import backend.parsers.hdfc \
+            --hidden-import backend.parsers.icici \
+            --hidden-import backend.parsers.axis \
+            --hidden-import backend.parsers.federal \
+            --hidden-import backend.parsers.indian_bank \
+            --hidden-import backend.parsers.generic \
+            --hidden-import backend.parsers.detector \
+            --hidden-import backend.routers.analytics \
+            --hidden-import backend.routers.cards \
+            --hidden-import backend.routers.categories \
+            --hidden-import backend.routers.settings \
+            --hidden-import backend.routers.statements \
+            --hidden-import backend.routers.tags \
+            --hidden-import backend.routers.transactions \
+            --collect-all pdfplumber \
+            scripts/launch.py
+          mkdir -p src-tauri/binaries
+          cp "dist/burnrate-server" "src-tauri/binaries/burnrate-server-${TRIPLE}"
+
+      - name: Install Tauri CLI
+        run: cargo install tauri-cli --version "^2"
+
+      - name: Build Tauri app
+        run: CI=false cargo tauri build
+
+      - name: Sign the .app bundle
+        run: |
+          APP_PATH=$(find src-tauri/target/release/bundle -name "*.app" -type d | head -1)
+          if [ -n "$APP_PATH" ]; then
+            codesign --force --deep --sign - "$APP_PATH"
+          fi
+
+      - name: Sign the .dmg
+        run: |
+          DMG_PATH=$(find src-tauri/target/release/bundle/dmg -name "*.dmg" | head -1)
+          if [ -n "$DMG_PATH" ]; then
+            codesign --force --sign - "$DMG_PATH"
+          fi
+
+      - name: Upload .dmg artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: Burnrate-macOS-x86_64
           path: src-tauri/target/release/bundle/dmg/*.dmg
 
   # ------------------------------------------------------------------
@@ -160,6 +287,13 @@ jobs:
       - name: Build frontend
         working-directory: frontend-neopop
         run: npm run build
+
+      - name: Generate app icon
+        shell: pwsh
+        run: |
+          Add-Type -AssemblyName System.Drawing
+          $svg = Get-Content "frontend-neopop/public/burnrate-logo.svg" -Raw
+          Write-Host "Icon SVG available for PyInstaller"
 
       - name: Build Windows executable
         run: |
@@ -212,18 +346,25 @@ jobs:
   # GitHub Release: collect artifacts and publish
   # ------------------------------------------------------------------
   release:
-    needs: [build-macos, build-windows]
-    if: always() && (needs.build-macos.result == 'success' || needs.build-windows.result == 'success')
+    needs: [build-macos-arm, build-macos-intel, build-windows]
+    if: always() && (needs.build-macos-arm.result == 'success' || needs.build-macos-intel.result == 'success' || needs.build-windows.result == 'success')
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
 
-      - name: Download macOS artifact
-        if: needs.build-macos.result == 'success'
+      - name: Download macOS ARM artifact
+        if: needs.build-macos-arm.result == 'success'
         uses: actions/download-artifact@v4
         with:
-          name: Burnrate-macOS
-          path: artifacts/macos
+          name: Burnrate-macOS-arm64
+          path: artifacts/macos-arm64
+
+      - name: Download macOS Intel artifact
+        if: needs.build-macos-intel.result == 'success'
+        uses: actions/download-artifact@v4
+        with:
+          name: Burnrate-macOS-x86_64
+          path: artifacts/macos-x86_64
 
       - name: Download Windows artifact
         if: needs.build-windows.result == 'success'
@@ -232,11 +373,21 @@ jobs:
           name: Burnrate-Windows
           path: artifacts/windows
 
+      - name: Rename artifacts for clarity
+        run: |
+          for f in artifacts/macos-arm64/*.dmg; do
+            [ -f "$f" ] && mv "$f" "artifacts/macos-arm64/Burnrate_aarch64.dmg" || true
+          done
+          for f in artifacts/macos-x86_64/*.dmg; do
+            [ -f "$f" ] && mv "$f" "artifacts/macos-x86_64/Burnrate_x86_64.dmg" || true
+          done
+
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v2
         with:
           generate_release_notes: true
           fail_on_unmatched_files: false
           files: |
-            artifacts/macos/*.dmg
+            artifacts/macos-arm64/*.dmg
+            artifacts/macos-x86_64/*.dmg
             artifacts/windows/*.exe

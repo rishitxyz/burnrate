@@ -49,7 +49,21 @@ docker run -p 8000:8000 -v burnrate_data:/data pratik1235/burnrate:v0.2.0
 
 ### macOS Native App
 
-Download `Burnrate_0.2.0_aarch64.dmg` from [GitHub Releases](https://github.com/pratik1235/burnrate/releases/latest), open the DMG, and drag to Applications.
+Download the DMG for your architecture from [GitHub Releases](https://github.com/pratik1235/burnrate/releases/latest):
+
+| Chip | Download |
+|------|----------|
+| Apple Silicon (M1/M2/M3/M4) | `Burnrate_aarch64.dmg` |
+| Intel | `Burnrate_x86_64.dmg` |
+
+Open the DMG and drag Burnrate to Applications.
+
+> **"Burnrate is damaged and can't be opened"?**
+> This happens because the app is not signed with an Apple Developer ID certificate. To fix it, run:
+> ```bash
+> xattr -cr /Applications/Burnrate.app
+> ```
+> Then open the app normally. This only needs to be done once.
 
 ### Windows Native App
 
@@ -64,7 +78,7 @@ python -m venv venv
 source venv/bin/activate  # On Windows: venv\Scripts\activate
 pip install -r requirements.txt
 cd ..
-python -m uvicorn backend.main:app --host 0.0.0.0 --port 8000
+python -m uvicorn backend.main:app --host 127.0.0.1 --port 8000
 
 # Frontend (in a separate terminal)
 cd frontend-neopop
