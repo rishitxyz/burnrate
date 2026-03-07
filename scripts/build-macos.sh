@@ -74,6 +74,9 @@ python -m PyInstaller \
 
 mkdir -p src-tauri/binaries
 cp "dist/burnrate-server" "src-tauri/binaries/burnrate-server-${TRIPLE}"
+
+echo "    Signing sidecar binary..."
+codesign --force --sign - "src-tauri/binaries/burnrate-server-${TRIPLE}"
 echo ""
 
 # ---- Step 3: Icons ----
@@ -97,18 +100,18 @@ echo "==> [5/5] Building Tauri native app..."
 CI=false cargo tauri build
 echo ""
 
-# ---- Sign ----
+# ---- Prepare artifacts ----
 APP_PATH=$(find src-tauri/target/release/bundle/macos -name "*.app" -type d 2>/dev/null | head -1)
 if [ -n "$APP_PATH" ]; then
-  echo "==> Signing ${APP_PATH}..."
-  codesign --force --deep --sign - "$APP_PATH"
+  echo "==> Clearing quarantine attributes on ${APP_PATH}..."
   xattr -cr "$APP_PATH" 2>/dev/null || true
 fi
 
 DMG_PATH=$(find src-tauri/target/release/bundle/dmg -name "*.dmg" 2>/dev/null | head -1)
 if [ -n "$DMG_PATH" ]; then
-  echo "==> Signing ${DMG_PATH}..."
-  codesign --force --sign - "$DMG_PATH"
+  echo "==> Preparing DMG for distribution..."
+  codesign --remove-signature "$DMG_PATH" 2>/dev/null || true
+  xattr -cr "$DMG_PATH" 2>/dev/null || true
 fi
 
 # ---- Done ----
@@ -124,6 +127,12 @@ if [ -n "$DMG_PATH" ]; then
 fi
 echo ""
 echo "  To install: open the DMG and drag Burnrate to Applications."
-echo "  If macOS says the app is damaged, run:"
-echo "    xattr -cr /Applications/Burnrate.app"
+echo ""
+echo "  If macOS blocks the DMG from opening:"
+echo "    1. Right-click the DMG → Open → click Open in the dialog"
+echo "    2. Or run: xattr -cr ${DMG_PATH:-/path/to/Burnrate.dmg}"
+echo ""
+echo "  If macOS blocks the app after installation:"
+echo "    1. Right-click Burnrate in Applications → Open → click Open"
+echo "    2. Or run: xattr -cr /Applications/Burnrate.app"
 echo "============================================"

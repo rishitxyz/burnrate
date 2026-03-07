@@ -1,0 +1,307 @@
+name: Build & Test
+
+on:
+  workflow_dispatch:
+    inputs:
+      sha:
+        description: 'Specific commit SHA (optional, defaults to branch HEAD)'
+        required: false
+        type: string
+        default: ''
+      build_macos:
+        description: 'Build macOS native binary (.dmg)'
+        required: false
+        type: boolean
+        default: false
+      build_windows:
+        description: 'Build Windows native binary (.exe)'
+        required: false
+        type: boolean
+        default: false
+      build_docker:
+        description: 'Build Docker image'
+        required: false
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
+
+env:
+  PYTHONUNBUFFERED: "1"
+
+jobs:
+  # ------------------------------------------------------------------
+  # Always runs: backend tests + frontend build & lint
+  # ------------------------------------------------------------------
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.sha || github.ref }}
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+          cache: pip
+
+      - name: Install system dependencies
+        run: sudo apt-get update && sudo apt-get install -y --no-install-recommends qpdf
+
+      - name: Install Python dependencies
+        run: pip install -r requirements.txt
+
+      - name: Run backend tests
+        run: python -m pytest tests/test_api.py tests/test_parsers.py -v --tb=short
+        env:
+          BURNRATE_DATA_DIR: /tmp/burnrate_test
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+          cache-dependency-path: frontend-neopop/package-lock.json
+
+      - name: Install frontend dependencies
+        working-directory: frontend-neopop
+        run: npm ci
+
+      - name: TypeScript type check
+        working-directory: frontend-neopop
+        run: npx tsc --noEmit
+
+      - name: Lint
+        working-directory: frontend-neopop
+        run: npx eslint src/ --max-warnings 0 || true
+
+      - name: Build frontend
+        working-directory: frontend-neopop
+        run: npm run build
+
+  # ------------------------------------------------------------------
+  # Optional: macOS ARM (Apple Silicon) → .dmg
+  # ------------------------------------------------------------------
+  build-macos:
+    needs: test
+    if: ${{ inputs.build_macos }}
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.sha || github.ref }}
+
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+          cache-dependency-path: frontend-neopop/package-lock.json
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Install Python dependencies
+        run: pip install -r requirements.txt pyinstaller
+
+      - name: Install frontend dependencies
+        working-directory: frontend-neopop
+        run: npm ci
+
+      - name: Build frontend
+        working-directory: frontend-neopop
+        run: npm run build
+
+      - name: Generate app icons from SVG
+        run: |
+          bash scripts/generate-icons.sh
+
+      - name: Build Python sidecar
+        run: |
+          TRIPLE=$(rustc -vV | grep host | awk '{print $2}')
+          pyinstaller \
+            --name burnrate-server \
+            --onefile \
+            --noconfirm \
+            --hidden-import uvicorn.logging \
+            --hidden-import uvicorn.loops \
+            --hidden-import uvicorn.loops.auto \
+            --hidden-import uvicorn.protocols \
+            --hidden-import uvicorn.protocols.http \
+            --hidden-import uvicorn.protocols.http.auto \
+            --hidden-import uvicorn.protocols.websockets \
+            --hidden-import uvicorn.protocols.websockets.auto \
+            --hidden-import uvicorn.lifespan \
+            --hidden-import uvicorn.lifespan.on \
+            --hidden-import backend.parsers.hdfc \
+            --hidden-import backend.parsers.icici \
+            --hidden-import backend.parsers.axis \
+            --hidden-import backend.parsers.federal \
+            --hidden-import backend.parsers.indian_bank \
+            --hidden-import backend.parsers.generic \
+            --hidden-import backend.parsers.detector \
+            --hidden-import backend.routers.analytics \
+            --hidden-import backend.routers.cards \
+            --hidden-import backend.routers.categories \
+            --hidden-import backend.routers.settings \
+            --hidden-import backend.routers.statements \
+            --hidden-import backend.routers.tags \
+            --hidden-import backend.routers.transactions \
+            --collect-all pdfplumber \
+            scripts/launch.py
+          mkdir -p src-tauri/binaries
+          cp "dist/burnrate-server" "src-tauri/binaries/burnrate-server-${TRIPLE}"
+          codesign --force --sign - "src-tauri/binaries/burnrate-server-${TRIPLE}"
+
+      - name: Install Tauri CLI
+        run: cargo install tauri-cli --version "^2"
+
+      - name: Build Tauri app
+        run: CI=false cargo tauri build
+
+      - name: Prepare DMG for distribution
+        run: |
+          DMG_PATH=$(find src-tauri/target/release/bundle/dmg -name "*.dmg" | head -1)
+          if [ -n "$DMG_PATH" ]; then
+            codesign --remove-signature "$DMG_PATH" 2>/dev/null || true
+            xattr -cr "$DMG_PATH" 2>/dev/null || true
+          fi
+
+      - name: Upload .dmg artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: Burnrate-macOS-arm64-dev
+          path: src-tauri/target/release/bundle/dmg/*.dmg
+          retention-days: 14
+
+  # ------------------------------------------------------------------
+  # Optional: Windows → .exe installer
+  # ------------------------------------------------------------------
+  build-windows:
+    needs: test
+    if: ${{ inputs.build_windows }}
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.sha || github.ref }}
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+          cache-dependency-path: frontend-neopop/package-lock.json
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Install Python dependencies
+        run: pip install -r requirements.txt pyinstaller
+
+      - name: Install frontend dependencies
+        working-directory: frontend-neopop
+        run: npm ci
+
+      - name: Build frontend
+        working-directory: frontend-neopop
+        run: npm run build
+
+      - name: Generate app icons from SVG
+        run: |
+          cd frontend-neopop
+          npm install --save-dev @resvg/resvg-js
+          node ../scripts/generate-icons.mjs
+
+      - name: Build Windows executable
+        run: |
+          pyinstaller `
+            --name Burnrate `
+            --onedir `
+            --noconfirm `
+            --icon "src-tauri/icons/icon.ico" `
+            --add-data "frontend-neopop/dist;static" `
+            --hidden-import uvicorn.logging `
+            --hidden-import uvicorn.loops `
+            --hidden-import uvicorn.loops.auto `
+            --hidden-import uvicorn.protocols `
+            --hidden-import uvicorn.protocols.http `
+            --hidden-import uvicorn.protocols.http.auto `
+            --hidden-import uvicorn.protocols.websockets `
+            --hidden-import uvicorn.protocols.websockets.auto `
+            --hidden-import uvicorn.lifespan `
+            --hidden-import uvicorn.lifespan.on `
+            --hidden-import backend.parsers.hdfc `
+            --hidden-import backend.parsers.icici `
+            --hidden-import backend.parsers.axis `
+            --hidden-import backend.parsers.federal `
+            --hidden-import backend.parsers.indian_bank `
+            --hidden-import backend.parsers.generic `
+            --hidden-import backend.parsers.detector `
+            --hidden-import backend.routers.analytics `
+            --hidden-import backend.routers.cards `
+            --hidden-import backend.routers.categories `
+            --hidden-import backend.routers.settings `
+            --hidden-import backend.routers.statements `
+            --hidden-import backend.routers.tags `
+            --hidden-import backend.routers.transactions `
+            scripts/launch.py
+
+      - name: Copy icon into dist for installer
+        run: Copy-Item "src-tauri/icons/icon.ico" "dist/Burnrate/icon.ico"
+
+      - name: Install Inno Setup
+        run: choco install innosetup -y --no-progress
+
+      - name: Build Inno Setup installer
+        shell: cmd
+        run: |
+          "C:\Program Files (x86)\Inno Setup 6\ISCC.exe" scripts\burnrate.iss
+
+      - name: Upload installer artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: Burnrate-Windows-dev
+          path: dist/Burnrate-Setup.exe
+          retention-days: 14
+
+  # ------------------------------------------------------------------
+  # Optional: Docker image (exported as downloadable tar)
+  # ------------------------------------------------------------------
+  build-docker:
+    needs: test
+    if: ${{ inputs.build_docker }}
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.sha || github.ref }}
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Build Docker image
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          push: false
+          tags: burnrate:dev-${{ inputs.sha || github.sha }}
+          outputs: type=docker,dest=/tmp/burnrate-docker.tar
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      - name: Upload Docker image artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: Burnrate-Docker-dev
+          path: /tmp/burnrate-docker.tar
+          retention-days: 14

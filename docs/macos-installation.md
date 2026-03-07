@@ -17,28 +17,42 @@ Download the DMG for your Mac from the [latest GitHub release](https://github.co
 | Apple Silicon (M1/M2/M3/M4) | `Burnrate_aarch64.dmg` |
 | Intel | `Burnrate_x86_64.dmg` |
 
+## Opening the DMG
+
+Since Burnrate is not signed with an Apple Developer ID certificate, macOS Gatekeeper will block the DMG when first downloaded. You will see a message like:
+
+- **"can't be opened because it is from an unidentified developer"**
+- **"can't be opened because Apple cannot check it for malicious software"**
+
+**Fix:** Right-click (or Control-click) the downloaded `.dmg` file, select **Open**, and click **Open** in the confirmation dialog. The DMG will mount and show the Burnrate app icon alongside an Applications folder.
+
+**Alternative (Terminal):** If right-click doesn't work (e.g. on macOS Sequoia), open Terminal and run:
+
+```bash
+xattr -cr ~/Downloads/Burnrate_aarch64.dmg
+```
+
+Replace the filename with the actual DMG you downloaded, then double-click to open.
+
 ## Install
 
-1. Open the downloaded `.dmg` file
+1. Open the downloaded `.dmg` file (see above if blocked by Gatekeeper)
 2. Drag **Burnrate** into the **Applications** folder
 3. Eject the DMG
 
 ## First Launch
 
-Since the app is ad-hoc signed (not with an Apple Developer ID certificate), macOS Gatekeeper may show one of these messages:
+After installing, macOS may also block the app on first launch. You will see a similar Gatekeeper message.
 
-- **"Burnrate is damaged and can't be opened"**
-- **"Burnrate can't be opened because Apple cannot check it for malicious software"**
+**Fix:** Right-click **Burnrate** in Applications, select **Open**, and click **Open** in the dialog. This only needs to be done once.
 
-**Fix (recommended):** Open Terminal and run:
+**Alternative (Terminal):**
 
 ```bash
 xattr -cr /Applications/Burnrate.app
 ```
 
-Then open the app normally. This only needs to be done once.
-
-**Alternative:** Right-click (or Control-click) on **Burnrate** in Applications, select **Open**, and click **Open** in the confirmation dialog.
+**macOS Sequoia (15+):** If neither method works, go to **System Settings → Privacy & Security**, scroll down, and click **Open Anyway** next to the Burnrate message.
 
 ## Usage
 
@@ -74,13 +88,19 @@ rm -rf ~/Library/Application\ Support/burnrate
 
 ## Troubleshooting
 
-### "Burnrate is damaged and can't be opened"
+### Gatekeeper blocks the DMG or app
 
 Run in Terminal:
 
 ```bash
+# For the DMG (replace filename as needed):
+xattr -cr ~/Downloads/Burnrate_aarch64.dmg
+
+# For the installed app:
 xattr -cr /Applications/Burnrate.app
 ```
+
+On macOS Sequoia (15+), also try: **System Settings → Privacy & Security → Open Anyway**.
 
 ### Server doesn't start
 

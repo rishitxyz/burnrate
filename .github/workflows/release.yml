@@ -130,6 +130,7 @@ jobs:
             scripts/launch.py
           mkdir -p src-tauri/binaries
           cp "dist/burnrate-server" "src-tauri/binaries/burnrate-server-${TRIPLE}"
+          codesign --force --sign - "src-tauri/binaries/burnrate-server-${TRIPLE}"
 
       - name: Install Tauri CLI
         run: cargo install tauri-cli --version "^2"
@@ -137,18 +138,12 @@ jobs:
       - name: Build Tauri app
         run: CI=false cargo tauri build
 
-      - name: Sign the .app bundle
-        run: |
-          APP_PATH=$(find src-tauri/target/release/bundle -name "*.app" -type d | head -1)
-          if [ -n "$APP_PATH" ]; then
-            codesign --force --deep --sign - "$APP_PATH"
-          fi
-
-      - name: Sign the .dmg
+      - name: Prepare DMG for distribution
         run: |
           DMG_PATH=$(find src-tauri/target/release/bundle/dmg -name "*.dmg" | head -1)
           if [ -n "$DMG_PATH" ]; then
-            codesign --force --sign - "$DMG_PATH"
+            codesign --remove-signature "$DMG_PATH" 2>/dev/null || true
+            xattr -cr "$DMG_PATH" 2>/dev/null || true
           fi
 
       - name: Upload .dmg artifact
@@ -230,6 +225,7 @@ jobs:
             scripts/launch.py
           mkdir -p src-tauri/binaries
           cp "dist/burnrate-server" "src-tauri/binaries/burnrate-server-${TRIPLE}"
+          codesign --force --sign - "src-tauri/binaries/burnrate-server-${TRIPLE}"
 
       - name: Install Tauri CLI
         run: cargo install tauri-cli --version "^2"
@@ -237,18 +233,12 @@ jobs:
       - name: Build Tauri app
         run: CI=false cargo tauri build
 
-      - name: Sign the .app bundle
-        run: |
-          APP_PATH=$(find src-tauri/target/release/bundle -name "*.app" -type d | head -1)
-          if [ -n "$APP_PATH" ]; then
-            codesign --force --deep --sign - "$APP_PATH"
-          fi
-
-      - name: Sign the .dmg
+      - name: Prepare DMG for distribution
         run: |
           DMG_PATH=$(find src-tauri/target/release/bundle/dmg -name "*.dmg" | head -1)
           if [ -n "$DMG_PATH" ]; then
-            codesign --force --sign - "$DMG_PATH"
+            codesign --remove-signature "$DMG_PATH" 2>/dev/null || true
+            xattr -cr "$DMG_PATH" 2>/dev/null || true
           fi
 
       - name: Upload .dmg artifact
