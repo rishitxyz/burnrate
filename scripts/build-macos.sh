@@ -50,6 +50,7 @@ python -m PyInstaller \
     --onefile \
     --noconfirm \
     --add-data "frontend-neopop/dist:static" \
+    --paths . \
     --hidden-import uvicorn.logging \
     --hidden-import uvicorn.loops \
     --hidden-import uvicorn.loops.auto \

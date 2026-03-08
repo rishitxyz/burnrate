@@ -107,6 +107,7 @@ jobs:
             --name burnrate-server \
             --onefile \
             --noconfirm \
+            --paths . \
             --hidden-import uvicorn.logging \
             --hidden-import uvicorn.loops \
             --hidden-import uvicorn.loops.auto \
@@ -195,6 +196,7 @@ jobs:
             --name burnrate-server \
             --onefile \
             --noconfirm \
+            --paths . \
             --hidden-import uvicorn.logging \
             --hidden-import uvicorn.loops \
             --hidden-import uvicorn.loops.auto \
@@ -278,6 +280,7 @@ jobs:
             --noconfirm `
             --icon "src-tauri/icons/icon.ico" `
             --add-data "frontend-neopop/dist;static" `
+            --paths . `
             --hidden-import uvicorn.logging `
             --hidden-import uvicorn.loops `
             --hidden-import uvicorn.loops.auto `
