@@ -111,13 +111,11 @@ def process_statement(
             from backend.parsers.detector import detect_bank
 
             bank = detect_bank(pdf_path)
-            print("Detected bank: ", bank)
 
         profile = _get_user_profile(db_session)
         card_last4s = _get_card_last4s(db_session, bank=bank) if bank else _get_card_last4s(db_session)
         working_path = pdf_path
         encrypted = is_encrypted(pdf_path)
-        print("Encrypted: ", encrypted)
 
         if encrypted and manual_password:
             unlocked = unlock_pdf(pdf_path, [manual_password])
@@ -186,7 +184,6 @@ def process_statement(
                 from backend.parsers.detector import detect_bank
 
                 detected = detect_bank(working_path)
-                print("Detected bank again: ", detected)
                 if detected and detected in SUPPORTED_BANKS:
                     bank = detected
 
@@ -220,15 +217,11 @@ def process_statement(
         from backend.parsers.generic import GenericParser
 
         parsers = _get_parsers()
-        print("Parsers: ", parsers)
-        print("Bank: ", bank)
         if bank in parsers:
             parser = parsers[bank]()
-            print("Parser: ", parser)
         else:
             parser = GenericParser(bank=bank)
         parsed = parser.parse(working_path)
-        print("Parsed: ", parsed)
 
         # Resolve card_last4 from parsed data or registered cards
         card_last4 = getattr(parsed, "card_last4", None)
