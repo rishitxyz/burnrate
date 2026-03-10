@@ -34,8 +34,8 @@ _CARD_RE = re.compile(r"[Xx]{2,4}\s*(\d{4})")
 
 # Updated to aggressively handle newlines and spacing between the label and value
 _TOTAL_DUE_RE = re.compile(
-    r"Total\s+Amount\s+Due\s*[\r\n]+\s*([\d,]+\.\d{2})\s*(?:DR|CR)?",
-    re.IGNORECASE,
+    r"Total\s+Amount\s+Due.*?\n\s*[r₹]?\s*([\d,]+\.\d{2})\s*(?:DR|CR)",
+    re.IGNORECASE | re.DOTALL,
 )
 
 _MIN_DUE_RE = re.compile(
@@ -44,8 +44,10 @@ _MIN_DUE_RE = re.compile(
 )
 
 _CREDIT_LIMIT_RE = re.compile(
-    r"Credit\s+Limit\s*[\r\n]+\s*[₹Rs\.\s]*([\d,]+(?:\.\d{2})?)",
-    re.IGNORECASE,
+    r"Total\s+Amount\s+Due.*?\n\s*[r₹]?\s*[\d,]+\.\d{2}\s*(?:DR|CR)\s+"
+    r"[r₹]?\s*[\d,]+\.\d{2}\s*(?:DR|CR)\s+"
+    r"[r₹]?\s*([\d,]+(?:\.\d{2})?)",
+    re.IGNORECASE | re.DOTALL,
 )
 
 _DUE_DATE_RE = re.compile(
@@ -148,7 +150,6 @@ class IDFCFirstBankParser(BaseParser):
         seen: set = set()
         transactions: List[ParsedTransaction] = []
         table_rows = table_rows[2:]
-        print("table_rows: ", table_rows)
 
         for row in table_rows:
             if len(row) < 3:
@@ -158,9 +159,7 @@ class IDFCFirstBankParser(BaseParser):
             # We split the cells by newline to unpack them.
             dates_raw = [row[0]]
             desc_raw = [row[2]]
-            print("desc_raw: ", desc_raw)
             amounts_raw = [row[5]]
-            print("amounts_raw: ", amounts_raw)
 
             # Guardrail: Skip if there are no dates, no amounts, or the first date is invalid
             if not dates_raw or not amounts_raw or not re.match(r"^\d{2}/\d{2}/\d{4}$", dates_raw[0]):
@@ -200,7 +199,7 @@ class IDFCFirstBankParser(BaseParser):
         seen: set, 
         transactions: list
     ):
-        is_credit = "CR" in amount_str
+        is_credit =  amount_str.endswith("CR")
         clean_amount = amount_str.replace("CR", "").replace("DR", "").replace(",", "").strip()
         
         try:
